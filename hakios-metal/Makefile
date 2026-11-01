@@ -19,7 +19,12 @@ SAN       ?=
 ifneq ($(SAN),)
 override CXXFLAGS += -fsanitize=$(SAN) -fno-omit-frame-pointer
 endif
-HOSTOUT   = out/host$(if $(SAN),-$(SAN))
+# CHIP=618: the Adreno 618 (the Pixel 4a, ios-sunfish) instead of the A635, into out/host-a618 and out/ios-a618
+CHIP      ?=
+ifeq ($(CHIP),618)
+override CXXFLAGS += -DHAKIOS_METAL_A618
+endif
+HOSTOUT   = out/host$(if $(CHIP),-a$(CHIP))$(if $(SAN),-$(SAN))
 .DEFAULT_GOAL := test
 
 # The host tools that make shader kernels into fixtures (tools/kernels.mk), and the link of Mesa's compiler libraries

@@ -667,11 +667,16 @@ bool FakeGpu::execCs(const uint32_t* p, uint32_t count, bool indirect) {
         fault("SP_CS_CTRL_REG0 and HLSQ_CS_CNTL_1 disagree about the thread size");
         return false;
     }
-    if (reg(REG_A6XX_HLSQ_CS_CNTL_0) != reg(REG_A6XX_SP_CS_CNTL_0) || reg(REG_A6XX_HLSQ_CS_CNTL_1) != reg(REG_A6XX_SP_CS_CNTL_1)) {
+    if (!kHasLpac) {
+        // a chip without LPAC (the A618) has no second copies: turnip never writes them there
+        if (reg(REG_A6XX_SP_CS_CNTL_0) != 0 || reg(REG_A6XX_SP_CS_CNTL_1) != 0 || reg(REG_A6XX_HLSQ_CS_CTRL_REG1) != 0) {
+            fault("SP_CS_CNTL_0/1 or HLSQ_CS_CTRL_REG1 written on a chip without LPAC (has_lpac is gen4's)");
+            return false;
+        }
+    } else if (reg(REG_A6XX_HLSQ_CS_CNTL_0) != reg(REG_A6XX_SP_CS_CNTL_0) || reg(REG_A6XX_HLSQ_CS_CNTL_1) != reg(REG_A6XX_SP_CS_CNTL_1)) {
         fault("the HLSQ's and the SP's copies of the id registers (CS_CNTL_0, CS_CNTL_1) differ");
         return false;
-    }
-    if (reg(REG_A6XX_SP_CS_CTRL_REG1) != reg(REG_A6XX_HLSQ_CS_CTRL_REG1)) {
+    } else if (reg(REG_A6XX_SP_CS_CTRL_REG1) != reg(REG_A6XX_HLSQ_CS_CTRL_REG1)) {
         fault("SP_CS_CTRL_REG1 and HLSQ_CS_CTRL_REG1 differ about shared memory and the constant split");
         return false;
     }
