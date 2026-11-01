@@ -374,13 +374,16 @@ static const char* dimName(uint8_t dim) {
 }
 
 int main(int argc, char** argv) {
-    bool recover = false, bisect = false, binTrace = false;
+    bool recover = false, bisect = false, binTrace = false, blitsOnly = false;
     compute::Options chosen;   // what the dispatches of stage 5 are encoded with
     std::vector<std::pair<std::string, std::string>> metallibs;   // --metallib FILE FUNCTION: a kernel of the phone's own image
     for (int i = 1; i < argc; i++) {
         recover = recover || strcmp(argv[i], "--recover") == 0;
         bisect = bisect || strcmp(argv[i], "--bisect") == 0;
         binTrace = binTrace || strcmp(argv[i], "--bin-trace") == 0;
+        // --blits-only: stages 1-4 (the command processor's copies and fills, no shader), for a GPU this driver has
+        // not run on yet (ios-sunfish's A618: the fixtures' machine code is the A635's)
+        blitsOnly = blitsOnly || strcmp(argv[i], "--blits-only") == 0;
         // --notail: no end-of-dispatch events and waits of our own; the kernel's own CACHE_FLUSH_TS fence closes the
         // submission (28 October: with them every dispatch hung, without them end_only completed in 48 us)
         if (strcmp(argv[i], "--notail") == 0) chosen.tail = false;
@@ -522,6 +525,11 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (blitsOnly) {
+        std::printf("probe: --blits-only, stopping before stage 5\n");
+        std::printf("probe: %d failure%s\n", failures, failures == 1 ? "" : "s");
+        return failures;
+    }
     // 5. compute, in order of hazard: the first shader instructions this driver has ever had the GPU run. The fake GPU
     // checked that the dispatch holds together; only this says whether the GPU runs it, and what it writes.
     {
@@ -1483,7 +1491,7 @@ int main(int argc, char** argv) {
                 const uint64_t words = t->buffer()->length() / 4;
                 for (uint64_t i = 0; i < words; i++) w[i] = canary;
                 const uint32_t groups[3] = {W / 8, H / 2, D - 1}, local82[3] = {8, 2, 1};
-                auto cb = runTex(is3d ? kernels::tex_fill_3d_air : kernels::tex_fill_arr_air, groups, local82, Bindings{{}, {t.get()}});
+                auto cb = runTex(is3d ? kernels::tex_fill_3d_air : kernels::tex_fill_arr_air, groups, local82, [&] { Bindings b; b.textures = {t.get()}; return b; }());
                 uint32_t right = 0, covered = 0, leftCanary = 0, left = 0, gapCanary = 0, gap = 0;
                 const uint64_t slice = t->sliceBytes(), row = t->bytesPerRow();
                 for (uint32_t z = 0; z < D; z++) {

@@ -25,6 +25,7 @@ ifeq ($(CHIP),618)
 override CXXFLAGS += -DHAKIOS_METAL_A618
 endif
 HOSTOUT   = out/host$(if $(CHIP),-a$(CHIP))$(if $(SAN),-$(SAN))
+IOSOUT    = out/ios$(if $(CHIP),-a$(CHIP))
 .DEFAULT_GOAL := test
 
 # The host tools that make shader kernels into fixtures (tools/kernels.mk), and the link of Mesa's compiler libraries
@@ -92,13 +93,16 @@ check: test
 
 # (the probe wants the fixtures, which want a host build of Mesa to be made again: with none here the library alone, which is what
 # the kernel's userland/build.sh links)
-ios: out/ios/libhakios-metal.a $(if $(wildcard $(IR3_CMDLINE_C)),out/ios/hakios-metal-probe)
+ios: $(IOSOUT)/libhakios-metal.a $(if $(wildcard $(IR3_CMDLINE_C)),$(IOSOUT)/hakios-metal-probe)
 
 darwin: ios
 
 # with MESA=1 the compiler goes to the phone too, against the iOS build of Mesa's libraries (IOS_MESA_BUILD, tools/compiler.mk)
 IOS_CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -Werror
 IOS_LIBS     =
+ifeq ($(CHIP),618)
+IOS_CXXFLAGS += -DHAKIOS_METAL_A618
+endif
 ifneq ($(strip $(MESA)),)
 IOS_CXXFLAGS += -DHAKIOS_METAL_MESA $(HAKIOS_METAL_IOS_MESA_CXXFLAGS)
 IOS_LIBS     += $(HAKIOS_METAL_IOS_MESA_LIBS)
@@ -112,16 +116,16 @@ IOS_CXXFLAGS += -DHAKIOS_METAL_CACHE_BUILD='"$(IOS_CACHE_BUILD)"'
 endif
 endif
 
-out/ios/libhakios-metal.a: $(CORE) src/fake_gpu.cpp src/iokit_transport.cpp $(wildcard include/hakios-metal/*.hpp)
-	@mkdir -p out/ios/obj
-	cd out/ios/obj && for f in $(CORE) src/fake_gpu.cpp src/iokit_transport.cpp; do \
+$(IOSOUT)/libhakios-metal.a: $(CORE) src/fake_gpu.cpp src/iokit_transport.cpp $(wildcard include/hakios-metal/*.hpp)
+	@mkdir -p $(IOSOUT)/obj
+	cd $(IOSOUT)/obj && for f in $(CORE) src/fake_gpu.cpp src/iokit_transport.cpp; do \
 		$(IOS_CXX) $(IOS_CXXFLAGS) -I../../../include -c ../../../$$f || exit 1; done
-	rm -f $@ && $(IOS_AR) $@ out/ios/obj/*.o
+	rm -f $@ && $(IOS_AR) $@ $(IOSOUT)/obj/*.o
 
 # (and the front end's archive, as the host tests: a probe linked before the front end changed tests the old one)
-out/ios/hakios-metal-probe: tools/probe.cpp out/ios/libhakios-metal.a $(wildcard tests/fixtures/*.hpp) \
+$(IOSOUT)/hakios-metal-probe: tools/probe.cpp $(IOSOUT)/libhakios-metal.a $(wildcard tests/fixtures/*.hpp) \
 		$(if $(strip $(MESA)),$(IOS_MESA_BUILD)/src/compiler/air/libair.a)
-	$(IOS_CXX) $(IOS_CXXFLAGS) -Iinclude -o $@ tools/probe.cpp out/ios/libhakios-metal.a $(IOS_LIBS) \
+	$(IOS_CXX) $(IOS_CXXFLAGS) -Iinclude -o $@ tools/probe.cpp $(IOSOUT)/libhakios-metal.a $(IOS_LIBS) \
 		-framework IOKit -framework CoreFoundation -framework IOSurface
 
 
