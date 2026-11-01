@@ -110,8 +110,8 @@ TEST(a6xx_load_state6_word_0) {
     // one IBO descriptor: ST6_IBO (3) << 14 = 0xc000 | 0x20000 | 0x340000 | 1 << 22 = 0x400000
     CHECK_EQ(loadState6_0(0, ST6_IBO, SS6_INDIRECT, SB6_CS_SHADER, 1), 0x0076c000u);
     // the shader preload is capped at the instruction cache, and that fits the 10-bit NUM_UNIT
-    CHECK_EQ(CP_LOAD_STATE6_0_NUM_UNIT(kInstrCacheSize), 127u << 22);
-    CHECK_EQ(kInstrCacheSize, 127u);
+    CHECK_EQ(CP_LOAD_STATE6_0_NUM_UNIT(kInstrCacheSize), (test::kA618 ? 64u : 127u) << 22);
+    CHECK_EQ(kInstrCacheSize, test::kA618 ? 64u : 127u);
     // the source address: the low word keeps bits 31:2, the high word is whole
     CHECK_EQ(CP_LOAD_STATE6_1_EXT_SRC_ADDR(0x1000), 0x1000u);
     CHECK_EQ(CP_LOAD_STATE6_1_EXT_SRC_ADDR(0x1003), 0x1000u);
@@ -283,9 +283,10 @@ TEST(a6xx_private_memory_fields_are_scaled) {
     CHECK_EQ(A6XX_SP_CS_PVT_MEM_HW_STACK_OFFSET_OFFSET(0x800), 1u);
     CHECK_EQ(A6XX_SP_CS_PVT_MEM_HW_STACK_OFFSET_OFFSET(0x10000), 0x20u);
     // this chip: 4096 fibers per SP, 2 SPs; a 512-byte private memory per fiber is 2 MiB per SP, 4 MiB in all
-    CHECK_EQ(kFibersPerSp, 4096u);
-    CHECK_EQ(kNumSpCores, 2u);
-    CHECK_EQ(A6XX_SP_CS_PVT_MEM_SIZE_TOTALPVTMEMSIZE(512 * kFibersPerSp), 512u);
+    // (the A618: 2048 fibers, 1 SP; 512 bytes a fiber is 1 MiB, field 256)
+    CHECK_EQ(kFibersPerSp, test::kTestFibers);
+    CHECK_EQ(kNumSpCores, test::kTestSpCores);
+    CHECK_EQ(A6XX_SP_CS_PVT_MEM_SIZE_TOTALPVTMEMSIZE(512 * kFibersPerSp), test::kA618 ? 256u : 512u);
 }
 
 TEST(a6xx_dispatch_words) {
@@ -333,7 +334,8 @@ TEST(a6xx_batch_start_words) {
     // RB_CCU_CNTL for rendering to memory on this chip: depth cache at 0, color cache after it at
     // num_ccu (2) * 64 KiB = 0x20000 bytes, in 4 KiB units: 0x20 << 23 = 0x10000000; both cache sizes FULL (0);
     // the chip has fast clear (bit 0 clear) and no concurrent resolve (bit 2 clear)
-    CHECK_EQ(rbCcuCntlSysmem(), 0x10000000u);
+    // (the A618: num_ccu 1 * 64 KiB = 0x10000: 0x10 << 23 = 0x08000000)
+    CHECK_EQ(rbCcuCntlSysmem(), test::kA618 ? 0x08000000u : 0x10000000u);
     CHECK_EQ(A6XX_RB_CCU_CNTL_COLOR_OFFSET(0x20000), 0x10000000u);
     CHECK_EQ(A6XX_RB_CCU_CNTL_DEPTH_OFFSET(0x1000), 0x1000u);
     CHECK_EQ(A6XX_RB_CCU_CNTL_COLOR_OFFSET_HI(1), 0x200u);
@@ -365,7 +367,7 @@ TEST(a6xx_batch_start_words) {
     CHECK_EQ(kStaticState[1].reg, REG_A6XX_SP_FLOAT_CNTL);
     CHECK_EQ(kStaticState[1].value, 0x8u);
     CHECK_EQ(kStaticState[5].reg, REG_A6XX_TPL1_DBG_ECO_CNTL);
-    CHECK_EQ(kStaticState[5].value, 0x05008000u);
+    CHECK_EQ(kStaticState[5].value, test::kA618 ? 0x00108000u : 0x05008000u);
     CHECK_EQ(kStaticState[19].reg, REG_A6XX_SP_MODE_CONTROL);
     CHECK_EQ(kStaticState[19].value, 0x5u);
     CHECK_EQ(kStaticState[23].reg, REG_A6XX_PC_MODE_CNTL);
@@ -386,11 +388,12 @@ TEST(a6xx_batch_start_words) {
     for (const RegWrite& w : kStaticState) {
         CHECK(w.reg >= 0x0e12 && w.reg <= 0xbe04);
     }
-    CHECK_EQ(kMagicTpl1DbgEcoCntl, 83918848u);
+    // (the A618's: freedreno_devices.py 25.0.7, GPUId(618) magic_regs)
+    CHECK_EQ(kMagicTpl1DbgEcoCntl, test::kA618 ? 0x00108000u : 83918848u);
     CHECK_EQ(kMagicRbDbgEcoCntl, 68157440u);
-    CHECK_EQ(kMagicVpcDbgEcoCntl, 33554432u);
-    CHECK_EQ(kMagicSpChickenBits, 5120u);
-    CHECK_EQ(kMagicUcheClientPf, 132u);
+    CHECK_EQ(kMagicVpcDbgEcoCntl, test::kA618 ? 0u : 33554432u);
+    CHECK_EQ(kMagicSpChickenBits, test::kA618 ? 0x430u : 5120u);
+    CHECK_EQ(kMagicUcheClientPf, test::kA618 ? 4u : 132u);
     CHECK_EQ(kBorderColorBytes, 32768u);
 }
 
@@ -744,7 +747,7 @@ TEST(a6xx_first_draw_program_words) {
     CHECK_EQ(hlsqFsCntl0(THREAD128, true), 0x3u);
     CHECK_EQ(hlsqFsCntl0(THREAD64, false), 0u);
     // the stage loads: NUM_UNIT is capped at the instruction cache, as compute's is
-    CHECK_EQ(CP_LOAD_STATE6_0_NUM_UNIT(kInstrCacheSize), 127u << 22);
+    CHECK_EQ(CP_LOAD_STATE6_0_NUM_UNIT(kInstrCacheSize), (test::kA618 ? 64u : 127u) << 22);
     // the private memory words are the compute ones' twins (same scales)
     CHECK_EQ(A6XX_SP_VS_PVT_MEM_PARAM_MEMSIZEPERITEM(512), 1u);
     CHECK_EQ(A6XX_SP_FS_PVT_MEM_SIZE_TOTALPVTMEMSIZE(0x1000), 1u);

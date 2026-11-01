@@ -660,7 +660,7 @@ TEST(render_encodes_the_first_triangles_registers) {
     {
         size_t ccu = e.findReg(REG_A6XX_RB_CCU_CNTL);
         CHECK(ccu != size_t(-1));
-        CHECK_EQ(w[ccu], 0x10000000u);
+        CHECK_EQ(w[ccu], test::kA618 ? 0x08000000u : 0x10000000u);
         pm4::Header before = pm4::decode(w[ccu - 2]);
         CHECK(before.kind == pm4::Header::kCommand && before.opcode == pm4::kWaitForIdle && before.count == 0);
     }
@@ -964,7 +964,7 @@ TEST(render_options_switch_each_group_and_each_alternative) {
         CHECK_EQ(e.find(CP_SET_DRAW_STATE), size_t(-1));
         CHECK_EQ(e.reg(REG_A6XX_SP_TP_BORDER_COLOR_BASE_ADDR), Encoded::kNone);
         CHECK_EQ(e.writes(REG_A6XX_RB_ALPHA_CONTROL), 1u);   // blendZsa's alone
-        CHECK_EQ(e.reg(REG_A6XX_RB_CCU_CNTL), 0x10000000u);   // ccuCntl is its own group
+        CHECK_EQ(e.reg(REG_A6XX_RB_CCU_CNTL), test::kA618 ? 0x08000000u : 0x10000000u);   // ccuCntl is its own group
         CHECK(e.stream.size() < whole.stream.size());
     }
     {
@@ -974,7 +974,7 @@ TEST(render_options_switch_each_group_and_each_alternative) {
     }
     {
         Encoded e = with([](render::Options& o) { o.ccuConcurrentResolve = true; });
-        CHECK_EQ(e.reg(REG_A6XX_RB_CCU_CNTL), 0x10000004u);
+        CHECK_EQ(e.reg(REG_A6XX_RB_CCU_CNTL), test::kA618 ? 0x08000004u : 0x10000004u);
     }
     {
         Encoded e = with([](render::Options& o) { o.passBegin = false; });
@@ -1851,7 +1851,8 @@ TEST(the_fake_refuses_a_draw_with_msaa_without_the_ccu_cntl_or_without_its_flush
         Twin w;
         size_t ccu = w.e.findReg(REG_A6XX_RB_CCU_CNTL);
         w.words[ccu - 2] = pm4::type7(pm4::kNop, 0);   // the WFI before it, gone
-        CHECK(has(w.fault(), "RB_CCU_CNTL (0x10000000) was not written in this submission right after a CP_WAIT_FOR_IDLE"));
+        CHECK(has(w.fault(), test::kA618 ? "RB_CCU_CNTL (0x8000000) was not written in this submission right after a CP_WAIT_FOR_IDLE"
+                                         : "RB_CCU_CNTL (0x10000000) was not written in this submission right after a CP_WAIT_FOR_IDLE"));
     }
     {
         Twin w;
@@ -2147,8 +2148,8 @@ TEST(a_stage_that_wants_private_memory_gets_the_queues) {
     auto scratch = r.queue->privateMemory(64, false, &pm, &why);
     CHECK(scratch != nullptr);
     CHECK_EQ(pm.perFiber, 512u);
-    CHECK_EQ(pm.perSp, 512u * 4096u);
-    CHECK_EQ(scratch->length(), 2ull * 512u * 4096u);
+    CHECK_EQ(pm.perSp, 512u * test::kTestFibers);
+    CHECK_EQ(scratch->length(), uint64_t(test::kTestSpCores) * 512u * test::kTestFibers);
     Bindings fsb;
     fsb.privateMemory = pm;
     Encoded e(r, p, pass, wholeDraw(3), render::Options{}, Bindings{}, fsb);
@@ -2156,8 +2157,8 @@ TEST(a_stage_that_wants_private_memory_gets_the_queues) {
     if (!e.ok) std::printf("       %s\n", e.error.c_str());
     CHECK_EQ(e.reg(REG_A6XX_SP_FS_OBJ_FIRST_EXEC_OFFSET + 3), A6XX_SP_CS_PVT_MEM_PARAM_MEMSIZEPERITEM(512));
     CHECK_EQ(e.reg(REG_A6XX_SP_FS_OBJ_FIRST_EXEC_OFFSET + 4), uint32_t(scratch->gpuAddress()));
-    CHECK_EQ(e.reg(REG_A6XX_SP_FS_OBJ_FIRST_EXEC_OFFSET + 6), (512u * 4096u) >> 12);
-    CHECK_EQ(e.reg(REG_A6XX_SP_FS_PVT_MEM_HW_STACK_OFFSET), (512u * 4096u) >> 11);
+    CHECK_EQ(e.reg(REG_A6XX_SP_FS_OBJ_FIRST_EXEC_OFFSET + 6), (512u * test::kTestFibers) >> 12);
+    CHECK_EQ(e.reg(REG_A6XX_SP_FS_PVT_MEM_HW_STACK_OFFSET), (512u * test::kTestFibers) >> 11);
     CHECK_EQ(e.reg(REG_A6XX_SP_VS_OBJ_FIRST_EXEC_OFFSET + 4), 0u);
     CHECK_EQ(e.reg(REG_A6XX_SP_VS_PVT_MEM_HW_STACK_OFFSET), 0u);
     auto cb = drawOnce(r, p, pass, wholeDraw(3));
@@ -4648,7 +4649,7 @@ TEST(a_program_longer_than_the_instruction_cache_is_preloaded_in_part) {
         const uint32_t type = (d0 & a6xx::CP_LOAD_STATE6_0_STATE_TYPE__MASK) >> a6xx::CP_LOAD_STATE6_0_STATE_TYPE__SHIFT;
         const uint32_t block = (d0 & a6xx::CP_LOAD_STATE6_0_STATE_BLOCK__MASK) >> a6xx::CP_LOAD_STATE6_0_STATE_BLOCK__SHIFT;
         if (type == a6xx::ST6_SHADER && block == a6xx::SB6_FS_SHADER) {
-            CHECK_EQ((d0 & a6xx::CP_LOAD_STATE6_0_NUM_UNIT__MASK) >> a6xx::CP_LOAD_STATE6_0_NUM_UNIT__SHIFT, 127u);
+            CHECK_EQ((d0 & a6xx::CP_LOAD_STATE6_0_NUM_UNIT__MASK) >> a6xx::CP_LOAD_STATE6_0_NUM_UNIT__SHIFT, test::kA618 ? 64u : 127u);
             w[i + 1] = (d0 & ~a6xx::CP_LOAD_STATE6_0_NUM_UNIT__MASK) | a6xx::CP_LOAD_STATE6_0_NUM_UNIT(128);
             found = true;
         }
@@ -5345,7 +5346,9 @@ TEST(the_gmem_plan_fits_the_bins_in_gmem_and_covers_the_target) {
         a.color0 = t.get();
         render::GmemPlan p;
         CHECK(render::gmemPlan(a, &p, nullptr));
-        CHECK(p.cols == 2 && p.rows == 12 && p.binW == 576 && p.binH == 208);
+        // (the A618: 0x7c000 / 2304 = 220 rows, 192 in 32-row granules: 13 rows of 192)
+        CHECK(test::kA618 ? (p.cols == 2 && p.rows == 13 && p.binW == 576 && p.binH == 192)
+                          : (p.cols == 2 && p.rows == 12 && p.binW == 576 && p.binH == 208));
     }
     // what stays in sysmem: a second colour attachment of another size, an integer target
     {
@@ -5462,7 +5465,10 @@ TEST(a_pass_of_two_attachments_in_gmem_loads_and_stores_those_drawn) {
         a.more[0].load = LoadAction::kLoad;
         render::GmemPlan p;
         CHECK(render::gmemPlan(a, &p, nullptr));
-        CHECK(p.binW == 576 && p.binH == 96 && p.base[0] == 0 && p.base[1] == 0x3c000 && p.room[0] == 0x3c000 && p.room[1] == 0x3c000);
+        // (the A618: GMEM below the colour cache is 0x7c000, so the second share is 0x7c000 - 0x3c000 = 0x40000; the
+        // bins stay 576 x 96: 0x3c000 / (576 * 4) = 106 rows, 96 in whole 32-row granules)
+        CHECK(p.binW == 576 && p.binH == 96 && p.base[0] == 0 && p.base[1] == 0x3c000 && p.room[0] == 0x3c000 &&
+              p.room[1] == (test::kA618 ? 0x40000u : 0x3c000u));
         auto cb = r.queue->commandBuffer();
         CHECK(cb->draw(both ? mrt : flatProgram(), a, wholeDraw(3, 1125, 2436), Bindings{}, Bindings{}));
         CHECK(cb->draw(both ? mrt : flatProgram(), a, wholeDraw(3, 1125, 2436), Bindings{}, Bindings{}));

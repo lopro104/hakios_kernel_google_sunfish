@@ -8,6 +8,16 @@
 
 namespace test {
 
+// the chip the tests are built for: HAKIOS_METAL_A618 (make CHIP=618) is ios-sunfish's Adreno 618, whose values the
+// tests below give beside the A635's, each worked out from Mesa 25.0.7 as the A635's were
+#if defined(HAKIOS_METAL_A618)
+inline constexpr bool kA618 = true;
+#else
+inline constexpr bool kA618 = false;
+#endif
+// fibers an SP times SPs: 4096 x 2 on the A635, 2048 x 1 on the A618 (freedreno_devices.py fibers_per_sp, num_ccu)
+inline constexpr unsigned kTestFibers = kA618 ? 2048u : 4096u, kTestSpCores = kA618 ? 1u : 2u;
+
 struct Case {
     const char* name;
     std::function<void()> run;

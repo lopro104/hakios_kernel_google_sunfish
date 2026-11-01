@@ -162,8 +162,8 @@ TEST(a_dispatch_gets_private_memory_and_the_threadgroup_memory_its_encoder_sets)
     auto at = [&](uint32_t reg) { size_t i = e.findReg(reg); return i == size_t(-1) ? 0xdeadbeefu : e.stream.words()[i]; };
     CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_PARAM), A6XX_SP_CS_PVT_MEM_PARAM_MEMSIZEPERITEM(512));
     CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_PARAM + 1), uint32_t(scratch->gpuAddress()));
-    CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_PARAM + 3), (512u * 4096u) >> 12);
-    CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_HW_STACK_OFFSET), (512u * 4096u) >> 11);
+    CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_PARAM + 3), (512u * test::kTestFibers) >> 12);
+    CHECK_EQ(at(REG_A6XX_SP_CS_PVT_MEM_HW_STACK_OFFSET), (512u * test::kTestFibers) >> 11);
     // through a command buffer the queue's own is bound, and the fake takes the dispatch
     auto cb = r.queue->commandBuffer();
     CHECK(cb->dispatch(k, kGroups16, nullptr, {Binding{out.get(), 0}}));
@@ -180,7 +180,11 @@ TEST(a_dispatch_gets_private_memory_and_the_threadgroup_memory_its_encoder_sets)
     Encoded big(r, kernels::fill_id, kGroups16, nullptr, tg);
     CHECK(big.ok);
     CHECK_EQ(sharedField(big.stream.words()[big.findReg(REG_A6XX_SP_CS_CTRL_REG1)]), 7u);
-    CHECK_EQ(sharedField(big.stream.words()[big.findReg(REG_A6XX_HLSQ_CS_CTRL_REG1)]), 7u);
+    if (test::kA618) {
+        CHECK(big.findReg(REG_A6XX_HLSQ_CS_CTRL_REG1) == size_t(-1));   // no LPAC: no HLSQ copy
+    } else {
+        CHECK_EQ(sharedField(big.stream.words()[big.findReg(REG_A6XX_HLSQ_CS_CTRL_REG1)]), 7u);
+    }
     tg.sharedBytes = 32 * 1024 + 1;
     Encoded over(r, kernels::fill_id, kGroups16, nullptr, tg);
     CHECK(!over.ok);
@@ -531,6 +535,15 @@ TEST(the_fake_refuses_id_registers_whose_two_copies_differ) {
             changed = true;
         }
         i += 1 + h.count;
+    }
+    if (test::kA618) {
+        // no LPAC: the encoder writes no SP_CS_CNTL_0, and one written anyway is refused
+        CHECK(!changed);
+        words.insert(words.begin(), {pm4::type4(a6xx::REG_A6XX_SP_CS_CNTL_0, 1), a6xx::A6XX_SP_CS_CNTL_0_LOCALIDREGID(0x4)});
+        Raw raw(r);
+        CHECK_EQ(raw.submit(words), ETIMEDOUT);
+        CHECK(r.fake->stats().lastFault.find("written on a chip without LPAC") != std::string::npos);
+        return;
     }
     CHECK(changed);
     Raw raw(r);
@@ -1187,10 +1200,16 @@ TEST(a_kernel_longer_than_the_instruction_cache_gets_the_instrlen_workaround) {
     {
         Encoded e(r, kernels::chain160_air, kGroups16, local, b);
         CHECK(e.ok);
-        CHECK(e.findReg(a6xx::REG_A6XX_SP_FS_INSTRLEN) == size_t(-1));
         size_t before = 0, after = 0;
         labels(e, &before, &after);
-        CHECK_EQ(before + after, size_t(0));
+        if (test::kA618) {
+            // 96 units are more than the A618's 64: the workaround, as long_chain_air's above
+            CHECK(e.findReg(a6xx::REG_A6XX_SP_FS_INSTRLEN) != size_t(-1));
+            CHECK_EQ(before + after, size_t(2));
+        } else {
+            CHECK(e.findReg(a6xx::REG_A6XX_SP_FS_INSTRLEN) == size_t(-1));
+            CHECK_EQ(before + after, size_t(0));
+        }
         // the same kernel with its preload cut below its length is fetched past the preload, and gets it
         compute::Options cut;
         cut.preloadCap = 64;
