@@ -1009,6 +1009,20 @@ deviceNoFeatureSet(__unused id self, __unused SEL _cmd, __unused unsigned long s
 	return NO;
 }
 
+static BOOL
+deviceSupportsFamily(__unused id self, __unused SEL _cmd, unsigned long family)
+{
+	/*
+	 * MTLGPUFamilyApple1 = 1001, Apple2 = 1002, Apple3 = 1003
+	 * MTLGPUFamilyCommon1 = 3001, Common2 = 3002, Common3 = 3003
+	 */
+	if (family == 1001 || family == 1002 || family == 1003 ||
+	    family == 3001 || family == 3002 || family == 3003) {
+		return YES;
+	}
+	return NO;
+}
+
 /*
  * The public protocol and Metal's private one of the same name (MTLBufferSPI ...), where this system has it: not every protocol
  * whose name begins the same, as for the stub objects, because MTLFunction begins a dozen others (MTLFunctionStitchingNode ...)
@@ -1120,6 +1134,7 @@ registerObjectClasses(Class device)
 	class_addMethod(device, sel_registerName("isRemovable"), (IMP)deviceNo, "B@:");
 	class_addMethod(device, sel_registerName("isHeadless"), (IMP)deviceNo, "B@:");
 	class_addMethod(device, sel_registerName("supportsFeatureSet:"), (IMP)deviceNoFeatureSet, "B@:Q");
+	class_addMethod(device, sel_registerName("supportsFamily:"), (IMP)deviceSupportsFamily, "B@:q");
 #ifdef HAKIOS_METAL_GPU
 	class_addMethod(device, sel_registerName("newComputePipelineStateWithFunction:error:"), (IMP)deviceNewComputePipeline, "@@:@^@");
 	class_addMethod(device, sel_registerName("newComputePipelineStateWithFunction:completionHandler:"), (IMP)deviceNewComputePipelineAsync, "v@:@@?");
@@ -2958,14 +2973,10 @@ shownToThisProcess(void)
 	return NO;
 }
 
-__attribute__((constructor)) static void
-registerDevice(void)
+static void
+doRegisterDevice(void)
 {
 	Class device;
-
-	if (!shownToThisProcess()) {
-		return;
-	}
 
 	gBase = objc_getClass("_MTLDevice");
 	if (gBase == Nil) {
@@ -3025,6 +3036,15 @@ registerDevice(void)
 	registerObjectClasses(device);
 }
 
+__attribute__((constructor)) static void
+registerDevice(void)
+{
+	if (!shownToThisProcess()) {
+		return;
+	}
+	doRegisterDevice();
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -3032,6 +3052,10 @@ __attribute__((visibility("default"))) id
 hakios_metal_open_device(unsigned int port)
 {
 	Class cls = objc_getClass("HakiosMetalDevice");
+	if (cls == Nil) {
+		doRegisterDevice();
+		cls = objc_getClass("HakiosMetalDevice");
+	}
 	if (cls == Nil) cls = objc_getClass("SweetMetalDevice");
 	if (cls == Nil) return nil;
 	return ((id (*)(id, SEL, unsigned int))objc_msgSend)([cls alloc], sel_registerName("initWithAcceleratorPort:"), port);
