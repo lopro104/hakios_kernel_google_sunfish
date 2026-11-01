@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* the TYPE tag (tools/metallib.py, checked against the metadata of the system's 456 modules) */
 enum hakios_metallib_type {
 	HAKIOS_METALLIB_VERTEX = 0,
@@ -64,5 +68,9 @@ const char *hakios_metallib_type_name(uint8_t type);
  */
 int hakios_metallib_bitcode(const uint8_t *data, size_t size, const struct hakios_metallib_function *function,
     const uint8_t **bitcode, uint64_t *length);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

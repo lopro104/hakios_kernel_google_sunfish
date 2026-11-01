@@ -61,7 +61,11 @@ deviceInit(id self, SEL _cmd, unsigned int port)
 static id
 deviceName(__unused id self, __unused SEL _cmd)
 {
-	return @"HakiOS Adreno 642L (Metal: a device that exists, nothing more)";
+#if defined(HAKIOS_METAL_A618)
+	return @"HakiOS Adreno 618";
+#else
+	return @"HakiOS Adreno 642L";
+#endif
 }
 
 static uint64_t
@@ -103,7 +107,7 @@ static Class gQueueClass;
 static void **stateOf(id self);
 
 static hakios_metal_device *gGPU;               /* opened once; NULL: the kernel has no GPU to give */
-static Class gCommandBufferClass, gBlitEncoderClass;
+static Class gCommandBufferClass, gBlitEncoderClass, gComputePipelineClass, gComputeEncoderClass;
 
 struct commandbuffer {
 	hakios_metal_cb *cb;
@@ -271,7 +275,6 @@ static const struct stubSpec {
 	{ "newSamplerStateWithDescriptor:", "HakiosMetalSamplerState", "_MTLSamplerState", "MTLSamplerState" },
 	{ "newTextureWithDescriptor:", "HakiosMetalTexture", "_MTLTexture", "MTLTexture" },
 	{ "newRenderPipelineStateWithDescriptor:error:", "HakiosMetalRenderPipelineState", "_MTLRenderPipelineState", "MTLRenderPipelineState" },
-	{ "newComputePipelineStateWithFunction:error:", "HakiosMetalComputePipelineState", "_MTLComputePipelineState", "MTLComputePipelineState" },
 	{ "newEventWithOptions:", "HakiosMetalEvent", "_MTLEvent", "MTLEvent" },
 	{ "newFence", "HakiosMetalFence", "_MTLFence", "MTLFence" },
 };
@@ -420,6 +423,10 @@ labelGet(id self, __unused SEL _cmd)
 		label = &((struct commandbuffer *)*slot)->label;
 	} else if (object_getClass(self) == gBlitEncoderClass) {
 		label = &((struct blitencoder *)*slot)->label;
+	} else if (object_getClass(self) == gComputePipelineClass) {
+		label = (id *)((char *)*slot + 16);
+	} else if (object_getClass(self) == gComputeEncoderClass) {
+		label = (id *)((char *)*slot + 824);
 #endif
 	} else {
 		label = &((struct function *)*slot)->label;
@@ -445,6 +452,10 @@ labelSet(id self, __unused SEL _cmd, id text)
 		label = &((struct commandbuffer *)*slot)->label;
 	} else if (object_getClass(self) == gBlitEncoderClass) {
 		label = &((struct blitencoder *)*slot)->label;
+	} else if (object_getClass(self) == gComputePipelineClass) {
+		label = (id *)((char *)*slot + 16);
+	} else if (object_getClass(self) == gComputeEncoderClass) {
+		label = (id *)((char *)*slot + 824);
 #endif
 	} else {
 		label = &((struct function *)*slot)->label;
@@ -1048,6 +1059,11 @@ objectClass(const char *name, const char *base, const char *const *protocols, IM
 	return cls;
 }
 
+#ifdef HAKIOS_METAL_GPU
+static id deviceNewComputePipeline(id self, SEL _cmd, id function, NSError **error);
+static void deviceNewComputePipelineAsync(id self, SEL _cmd, id function, void (^completion)(id, NSError *));
+#endif
+
 static void
 registerObjectClasses(Class device)
 {
@@ -1100,6 +1116,10 @@ registerObjectClasses(Class device)
 	class_addMethod(device, sel_registerName("isRemovable"), (IMP)deviceNo, "B@:");
 	class_addMethod(device, sel_registerName("isHeadless"), (IMP)deviceNo, "B@:");
 	class_addMethod(device, sel_registerName("supportsFeatureSet:"), (IMP)deviceNoFeatureSet, "B@:Q");
+#ifdef HAKIOS_METAL_GPU
+	class_addMethod(device, sel_registerName("newComputePipelineStateWithFunction:error:"), (IMP)deviceNewComputePipeline, "@@:@^@");
+	class_addMethod(device, sel_registerName("newComputePipelineStateWithFunction:completionHandler:"), (IMP)deviceNewComputePipelineAsync, "v@:@@?");
+#endif
 }
 
 /* Declares `protocol` and every private protocol whose name begins with it on `cls`, and keeps them for the stub's signatures. */
@@ -1414,11 +1434,252 @@ blitNothing(__unused id self, __unused SEL _cmd, __unused id resource)
 	/* synchronizeResource: the memory is the CPU's and the GPU's both (write-combined): there is nothing to copy back */
 }
 
+struct compute_pipeline {
+	hakios_metal_kernel *kernel;
+	id function;
+	id label;
+};
+
+struct compute_encoder {
+	id commandBuffer;
+	id pipeline;
+	hakios_metal_kernel *kernel;
+	hakios_metal_buffer *buffers[31];
+	uint64_t offsets[31];
+	unsigned maxBuffer;
+	hakios_metal_texture *textures[31];
+	unsigned maxTexture;
+	hakios_metal_sampler *samplers[16];
+	unsigned maxSampler;
+	BOOL ended;
+	id label;
+};
+
+static void
+computePipelineFree(void *state)
+{
+	struct compute_pipeline *cp = (struct compute_pipeline *)state;
+
+	if (cp->kernel != NULL) {
+		hakios_metal_kernel_free(cp->kernel);
+	}
+	[cp->function release];
+	[cp->label release];
+	free(cp);
+}
+
+static void
+computePipelineDealloc(id self, SEL _cmd)
+{
+	deallocWith(self, _cmd, gComputePipelineClass, computePipelineFree);
+}
+
+static unsigned long
+computePipelineMaxThreads(id self, __unused SEL _cmd)
+{
+	struct compute_pipeline *cp = slotState(self);
+	unsigned m = cp && cp->kernel ? hakios_metal_kernel_max_threads(cp->kernel) : 1024;
+	return m ? m : 1024;
+}
+
+static unsigned long
+computePipelineExecutionWidth(id self, __unused SEL _cmd)
+{
+	struct compute_pipeline *cp = slotState(self);
+	unsigned w = cp && cp->kernel ? hakios_metal_kernel_execution_width(cp->kernel) : 64;
+	return w ? w : 64;
+}
+
+static unsigned long
+computePipelineThreadgroupMemory(id self, __unused SEL _cmd)
+{
+	struct compute_pipeline *cp = slotState(self);
+	return cp && cp->kernel ? hakios_metal_kernel_threadgroup_memory(cp->kernel) : 0;
+}
+
+static void
+computeEncoderFree(void *state)
+{
+	struct compute_encoder *e = (struct compute_encoder *)state;
+
+	[e->commandBuffer release];
+	[e->pipeline release];
+	[e->label release];
+	free(e);
+}
+
+static void
+computeEncoderDealloc(id self, SEL _cmd)
+{
+	deallocWith(self, _cmd, gComputeEncoderClass, computeEncoderFree);
+}
+
+static void
+computeSetPipeline(id self, __unused SEL _cmd, id pipeline)
+{
+	struct compute_encoder *e = slotState(self);
+	if (e == NULL || e->ended) return;
+	[e->pipeline release];
+	e->pipeline = [pipeline retain];
+	void **slot = stateOf(pipeline);
+	struct compute_pipeline *cp = slot != NULL ? (struct compute_pipeline *)*slot : NULL;
+	e->kernel = cp != NULL ? cp->kernel : NULL;
+}
+
+static void
+computeSetBuffer(id self, __unused SEL _cmd, id buffer, unsigned long offset, unsigned long index)
+{
+	struct compute_encoder *e = slotState(self);
+	if (e == NULL || e->ended || index >= 31) return;
+	e->buffers[index] = gpuBufferOf(buffer);
+	e->offsets[index] = offset;
+	if (index + 1 > e->maxBuffer) e->maxBuffer = (unsigned)(index + 1);
+}
+
+static void
+computeSetBuffers(id self, __unused SEL _cmd, const id *buffers, const unsigned long *offsets, NSRange range)
+{
+	for (NSUInteger k = 0; k < range.length; k++) {
+		computeSetBuffer(self, _cmd, buffers[k], offsets[k], range.location + k);
+	}
+}
+
+static void
+computeDispatch(id self, __unused SEL _cmd, MTLSize groups, MTLSize threads)
+{
+	struct compute_encoder *e = slotState(self);
+	struct commandbuffer *c = e != NULL && !e->ended ? slotState(e->commandBuffer) : NULL;
+	if (c == NULL || e->kernel == NULL) {
+		say(@"dispatchThreadgroups: no command buffer or no compute pipeline set");
+		return;
+	}
+	unsigned g[3] = { (unsigned)groups.width, (unsigned)groups.height, (unsigned)groups.depth };
+	unsigned t[3] = { (unsigned)threads.width, (unsigned)threads.height, (unsigned)threads.depth };
+	if (hakios_metal_cb_dispatch2(c->cb, e->kernel, g, t, e->buffers, e->offsets, e->maxBuffer,
+	                             e->textures, e->maxTexture, e->samplers, e->maxSampler) != 0) {
+		say([NSString stringWithFormat:@"dispatchThreadgroups: %s", hakios_metal_error()]);
+	}
+}
+
+static void
+computeDispatchThreads(id self, SEL _cmd, MTLSize threads, MTLSize threadsPerGroup)
+{
+	if (threadsPerGroup.width == 0 || threadsPerGroup.height == 0 || threadsPerGroup.depth == 0) return;
+	MTLSize groups;
+	groups.width = (threads.width + threadsPerGroup.width - 1) / threadsPerGroup.width;
+	groups.height = (threads.height + threadsPerGroup.height - 1) / threadsPerGroup.height;
+	groups.depth = (threads.depth + threadsPerGroup.depth - 1) / threadsPerGroup.depth;
+	computeDispatch(self, _cmd, groups, threadsPerGroup);
+}
+
+static void
+computeEnd(id self, __unused SEL _cmd)
+{
+	struct compute_encoder *e = slotState(self);
+	if (e != NULL) {
+		e->ended = YES;
+	}
+}
+
+static id
+commandBufferComputeEncoder(id self, __unused SEL _cmd)
+{
+	id (*plain)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+	struct commandbuffer *c = slotState(self);
+	struct compute_encoder *e;
+	void **slot;
+	id encoder;
+
+	if (c == NULL || c->committed || gComputeEncoderClass == Nil ||
+	    (encoder = plain(plain((id)gComputeEncoderClass, sel_registerName("alloc")), sel_registerName("init"))) == nil) {
+		return nil;
+	}
+	e = calloc(1, sizeof(*e));
+	slot = stateOf(encoder);
+	if (e == NULL || slot == NULL) {
+		free(e);
+		[encoder release];
+		return nil;
+	}
+	e->commandBuffer = [self retain];
+	*slot = e;
+	return [encoder autorelease];
+}
+
+static id
+deviceNewComputePipeline(__unused id self, __unused SEL _cmd, id function, NSError **error)
+{
+	if (function == nil) {
+		if (error != NULL) {
+			*error = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorInternal
+			    userInfo:@{ NSLocalizedDescriptionKey: @"nil function" }];
+		}
+		return nil;
+	}
+	NSData *bitcode = nil;
+	if ([function respondsToSelector:sel_registerName("hakiosBitcode")]) {
+		bitcode = ((id (*)(id, SEL))objc_msgSend)(function, sel_registerName("hakiosBitcode"));
+	} else if ([function respondsToSelector:sel_registerName("bitcodeData")]) {
+		bitcode = ((id (*)(id, SEL))objc_msgSend)(function, sel_registerName("bitcodeData"));
+	}
+	if (bitcode == nil || [bitcode length] == 0) {
+		if (error != NULL) {
+			*error = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorInternal
+			    userInfo:@{ NSLocalizedDescriptionKey: @"function has no bitcode" }];
+		}
+		return nil;
+	}
+	hakios_metal_kernel *k = hakios_metal_kernel_compile_bitcode([bitcode bytes], [bitcode length]);
+	if (k == NULL) {
+		const char *err = hakios_metal_error();
+		say([NSString stringWithFormat:@"newComputePipelineState: compile failed: %s", err ? err : "unknown"]);
+		if (error != NULL) {
+			*error = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorInternal
+			    userInfo:@{ NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err ? err : "compile failed"] }];
+		}
+		return nil;
+	}
+	id (*plain)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+	id pipe = plain(plain((id)gComputePipelineClass, sel_registerName("alloc")), sel_registerName("init"));
+	void **slot = stateOf(pipe);
+	struct compute_pipeline *cp = calloc(1, sizeof(*cp));
+	if (pipe == nil || slot == NULL || cp == NULL) {
+		free(cp);
+		[pipe release];
+		hakios_metal_kernel_free(k);
+		return nil;
+	}
+	cp->kernel = k;
+	cp->function = [function retain];
+	*slot = cp;
+	say([NSString stringWithFormat:@"newComputePipelineStateWithFunction:%@: compiled (%u max threads, execution width %u)",
+	    [function name], hakios_metal_kernel_max_threads(k), hakios_metal_kernel_execution_width(k)]);
+	return pipe;
+}
+
+static void
+deviceNewComputePipelineAsync(id self, SEL _cmd, id function, void (^completion)(id, NSError *))
+{
+	NSError *err = nil;
+	id pipe = deviceNewComputePipeline(self, _cmd, function, &err);
+	if (completion != nil) {
+		completion(pipe, err);
+	}
+}
+
 static void
 registerCommandClasses(void)
 {
-	static const char *const cb[] = { "MTLCommandBuffer", NULL }, *const blit[] = { "MTLBlitCommandEncoder", "MTLCommandEncoder", NULL };
+	static const char *const cb[] = { "MTLCommandBuffer", NULL }, *const blit[] = { "MTLBlitCommandEncoder", "MTLCommandEncoder", NULL },
+	    *const computeEnc[] = { "MTLComputeCommandEncoder", "MTLCommandEncoder", NULL },
+	    *const computePipe[] = { "MTLComputePipelineState", NULL };
 
+	if ((gComputePipelineClass = objectClass("HakiosMetalComputePipelineState", "_MTLComputePipelineState", computePipe, (IMP)computePipelineDealloc)) != Nil) {
+		class_addMethod(gComputePipelineClass, sel_registerName("maxTotalThreadsPerThreadgroup"), (IMP)computePipelineMaxThreads, "Q@:");
+		class_addMethod(gComputePipelineClass, sel_registerName("threadExecutionWidth"), (IMP)computePipelineExecutionWidth, "Q@:");
+		class_addMethod(gComputePipelineClass, sel_registerName("staticThreadgroupMemoryLength"), (IMP)computePipelineThreadgroupMemory, "Q@:");
+		objc_registerClassPair(gComputePipelineClass);
+	}
 	if ((gCommandBufferClass = objectClass("HakiosMetalCommandBuffer", "_MTLCommandBuffer", cb, (IMP)commandBufferDealloc)) != Nil) {
 		class_addMethod(gCommandBufferClass, sel_registerName("commit"), (IMP)commandBufferCommit, "v@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("enqueue"), (IMP)commandBufferEnqueue, "v@:");
@@ -1430,6 +1691,8 @@ registerCommandClasses(void)
 		class_addMethod(gCommandBufferClass, sel_registerName("error"), (IMP)commandBufferError, "@@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("commandQueue"), (IMP)commandBufferQueue, "@@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("blitCommandEncoder"), (IMP)commandBufferBlitEncoder, "@@:");
+		class_addMethod(gCommandBufferClass, sel_registerName("computeCommandEncoder"), (IMP)commandBufferComputeEncoder, "@@:");
+		class_addMethod(gCommandBufferClass, sel_registerName("computeCommandEncoderWithDispatchType:"), (IMP)commandBufferComputeEncoder, "@@:Q");
 		class_addMethod(gCommandBufferClass, sel_registerName("GPUStartTime"), (IMP)commandBufferNoTime, "d@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("GPUEndTime"), (IMP)commandBufferNoTime, "d@:");
 		objc_registerClassPair(gCommandBufferClass);
@@ -1441,6 +1704,15 @@ registerCommandClasses(void)
 		class_addMethod(gBlitEncoderClass, sel_registerName("endEncoding"), (IMP)blitEnd, "v@:");
 		class_addMethod(gBlitEncoderClass, sel_registerName("synchronizeResource:"), (IMP)blitNothing, "v@:@");
 		objc_registerClassPair(gBlitEncoderClass);
+	}
+	if ((gComputeEncoderClass = objectClass("HakiosMetalComputeEncoder", "_MTLCommandEncoder", computeEnc, (IMP)computeEncoderDealloc)) != Nil) {
+		class_addMethod(gComputeEncoderClass, sel_registerName("setComputePipelineState:"), (IMP)computeSetPipeline, "v@:@");
+		class_addMethod(gComputeEncoderClass, sel_registerName("setBuffer:offset:atIndex:"), (IMP)computeSetBuffer, "v@:@QQ");
+		class_addMethod(gComputeEncoderClass, sel_registerName("setBuffers:offsets:withRange:"), (IMP)computeSetBuffers, "v@:r^@r^Q{_NSRange=QQ}");
+		class_addMethod(gComputeEncoderClass, sel_registerName("dispatchThreadgroups:threadsPerThreadgroup:"), (IMP)computeDispatch, "v@:{?=QQQ}{?=QQQ}");
+		class_addMethod(gComputeEncoderClass, sel_registerName("dispatchThreads:threadsPerThreadgroup:"), (IMP)computeDispatchThreads, "v@:{?=QQQ}{?=QQQ}");
+		class_addMethod(gComputeEncoderClass, sel_registerName("endEncoding"), (IMP)computeEnd, "v@:");
+		objc_registerClassPair(gComputeEncoderClass);
 	}
 }
 #endif
@@ -1557,6 +1829,25 @@ shownToThisProcess(void)
 	const char * name = getprogname();
 	int level = 1;
 
+	if (name != NULL && (strcmp(name, "metal_test") == 0 || strcmp(name, "hakios-test") == 0 || strcmp(name, "mtldisc") == 0)) {
+		return YES;
+	}
+	if (getenv("HAKIOS_METAL_ENABLE") != NULL || getenv("USE_HAKIOS") != NULL) {
+		return YES;
+	}
+	FILE *cf = fopen("/var/jb/etc/hakiosmetal.clients", "r");
+	if (cf == NULL) cf = fopen("/var/jb/etc/sweetmetal.clients", "r");
+	if (cf != NULL) {
+		char line[256];
+		BOOL ok = NO;
+		while (!ok && fgets(line, sizeof(line), cf) != NULL) {
+			line[strcspn(line, " \t\r\n#")] = '\0';
+			ok = strcmp(line, "*") == 0 || (line[0] != '\0' && name != NULL && strcmp(line, name) == 0);
+		}
+		fclose(cf);
+		if (ok) return YES;
+	}
+
 	if (sysctlbyname("kern.bootargs", args, &size, NULL, 0) == 0) {
 		const char * at = strstr(args, "metal=");
 
@@ -1633,7 +1924,29 @@ registerDevice(void)
 	class_addMethod(device, sel_registerName("forwardInvocation:"), (IMP)deviceForward, "v@:@");
 	objc_registerClassPair(device);
 	say(@"the class HakiosMetalDevice is registered (a subclass of _MTLDevice)");
+	if (objc_getClass("SweetMetalDevice") == Nil) {
+		Class sweet = objc_allocateClassPair(device, "SweetMetalDevice", 0);
+		if (sweet != Nil) {
+			objc_registerClassPair(sweet);
+			say(@"the class SweetMetalDevice is registered (a subclass of HakiosMetalDevice)");
+		}
+	}
 	registerQueueClass();
 	registerStubClasses(device);
 	registerObjectClasses(device);
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+__attribute__((visibility("default"))) id
+hakios_metal_open_device(unsigned int port)
+{
+	Class cls = objc_getClass("HakiosMetalDevice");
+	if (cls == Nil) cls = objc_getClass("SweetMetalDevice");
+	if (cls == Nil) return nil;
+	return ((id (*)(id, SEL, unsigned int))objc_msgSend)([cls alloc], sel_registerName("initWithAcceleratorPort:"), port);
+}
+#ifdef __cplusplus
+}
+#endif
