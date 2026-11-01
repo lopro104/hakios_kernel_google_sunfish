@@ -1312,6 +1312,49 @@ commandBufferAddScheduled(id self, __unused SEL _cmd, void (^handler)(id))
 	}
 }
 
+static void
+commandBufferPresentDrawable(id self, SEL _cmd, id drawable)
+{
+	if (drawable == nil) {
+		return;
+	}
+	commandBufferAddHandler(self, _cmd, ^(__unused id cb) {
+		if ([drawable respondsToSelector:@selector(present)]) {
+			[drawable present];
+		}
+	});
+}
+
+static void
+commandBufferPresentDrawableAtTime(id self, SEL _cmd, id drawable, CFTimeInterval presentationTime)
+{
+	if (drawable == nil) {
+		return;
+	}
+	commandBufferAddHandler(self, _cmd, ^(__unused id cb) {
+		if ([drawable respondsToSelector:@selector(presentAtTime:)]) {
+			[drawable presentAtTime:presentationTime];
+		} else if ([drawable respondsToSelector:@selector(present)]) {
+			[drawable present];
+		}
+	});
+}
+
+static void
+commandBufferPresentDrawableAfterDuration(id self, SEL _cmd, id drawable, CFTimeInterval duration)
+{
+	if (drawable == nil) {
+		return;
+	}
+	commandBufferAddHandler(self, _cmd, ^(__unused id cb) {
+		if ([drawable respondsToSelector:@selector(presentAfterMinimumDuration:)]) {
+			[drawable presentAfterMinimumDuration:duration];
+		} else if ([drawable respondsToSelector:@selector(present)]) {
+			[drawable present];
+		}
+	});
+}
+
 static unsigned long
 commandBufferStatus(id self, __unused SEL _cmd)
 {
@@ -2769,6 +2812,9 @@ registerCommandClasses(void)
 		class_addMethod(gCommandBufferClass, sel_registerName("computeCommandEncoder"), (IMP)commandBufferComputeEncoder, "@@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("computeCommandEncoderWithDispatchType:"), (IMP)commandBufferComputeEncoder, "@@:Q");
 		class_addMethod(gCommandBufferClass, sel_registerName("renderCommandEncoderWithDescriptor:"), (IMP)commandBufferRenderEncoder, "@@:@");
+		class_addMethod(gCommandBufferClass, sel_registerName("presentDrawable:"), (IMP)commandBufferPresentDrawable, "v@:@");
+		class_addMethod(gCommandBufferClass, sel_registerName("presentDrawable:atTime:"), (IMP)commandBufferPresentDrawableAtTime, "v@:@d");
+		class_addMethod(gCommandBufferClass, sel_registerName("presentDrawable:afterMinimumDuration:"), (IMP)commandBufferPresentDrawableAfterDuration, "v@:@d");
 		class_addMethod(gCommandBufferClass, sel_registerName("GPUStartTime"), (IMP)commandBufferNoTime, "d@:");
 		class_addMethod(gCommandBufferClass, sel_registerName("GPUEndTime"), (IMP)commandBufferNoTime, "d@:");
 		objc_registerClassPair(gCommandBufferClass);
@@ -2868,6 +2914,7 @@ registerQueueClass(void)
 	class_addIvar(gQueueClass, "_hakios", sizeof(void *), sizeof(void *) == 8 ? 3 : 2, "^v");
 	class_addMethod(gQueueClass, sel_registerName("commandBuffer"), (IMP)queueCommandBuffer, "@@:");
 	class_addMethod(gQueueClass, sel_registerName("commandBufferWithUnretainedReferences"), (IMP)queueCommandBuffer, "@@:");
+	class_addMethod(gQueueClass, sel_registerName("commandBufferWithDescriptor:"), (IMP)queueCommandBuffer, "@@:@");
 #endif
 	objc_registerClassPair(gQueueClass);
 	say(@"the class HakiosMetalQueue is registered (a subclass of _MTLCommandQueue)");
@@ -3020,6 +3067,7 @@ doRegisterDevice(void)
 	class_addMethod(device, sel_registerName("maxThreadsPerThreadgroup"), (IMP)deviceMaxThreadsPerThreadgroup, "{?=QQQ}@:");
 	class_addMethod(device, sel_registerName("newCommandQueue"), (IMP)deviceNewQueue, "@@:");
 	class_addMethod(device, sel_registerName("newCommandQueueWithMaxCommandBufferCount:"), (IMP)deviceNewQueueMax, "@@:Q");
+	class_addMethod(device, sel_registerName("newCommandQueueWithDescriptor:"), (IMP)deviceNewQueue, "@@:@");
 	class_addMethod(device, sel_registerName("methodSignatureForSelector:"), (IMP)deviceSignature, "@@::");
 	class_addMethod(device, sel_registerName("forwardInvocation:"), (IMP)deviceForward, "v@:@");
 	objc_registerClassPair(device);
