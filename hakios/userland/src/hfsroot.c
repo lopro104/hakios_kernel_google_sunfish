@@ -5,7 +5,8 @@
  * It mounts /dev/ufs_userdata read only on /flash, says what is there, and stops (exit panics the kernel, ending the
  * run). hfsroot_wait=N: stay N seconds first.
  *
- * hfsroot_launchd=1 goes on: a memory filesystem on /private/var, since the volume's own cannot be written, the
+ * hfsroot_launchd=1 goes on: a memory filesystem on /private/var, since the volume's own cannot be written, with a
+ * copy of the volume's directories, links and small files (var_copy), the
  * volume as the root (the RAM disk on hfsroot_out, default cores, which has to be a directory on the volume), and its
  * /sbin/launchd as process 1.
  */
@@ -94,6 +95,156 @@ list(const char *path)
 	close(fd);
 }
 
+/*
+ * /private/var of the volume, into the memory filesystem that covers it: directories, links, and the small files that
+ * hold what the system remembers (preferences and the like). Nothing goes back to the volume: this is gone at reboot.
+ */
+#define VAR_FILE_MAX    (64 * 1024)     /* a bigger file is left out */
+#define VAR_BYTES_MAX   (150 << 20)
+#define VAR_FILES_MAX   40000
+#define VAR_DEPTH_MAX   24
+
+/* left empty: relative to /private/var */
+static const char *const var_empty[] = {
+	"tmp", "run", "vm", "logs", "jb", "db/diagnostics", "db/uuidtext", "mobile/Library/Logs", "mobile/Library/Caches",
+	"mobile/Media", "MobileAsset", "MobileSoftwareUpdate", "staged_system_apps", "root/Library/Caches",
+};
+/* not made at all: a core dump in memory would cost more than it says */
+static const char *const var_none[] = { "cores" };
+
+static long var_dirs, var_links, var_files, var_bytes, var_skipped, var_failed;
+
+static int
+var_listed(const char *rel, const char *const *names, unsigned count)
+{
+	for (unsigned i = 0; i < count; i++) {
+		if (strcmp(rel, names[i]) == 0) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void
+var_copy_file(const char *from, const char *to, const struct stat *st)
+{
+	static char data[VAR_FILE_MAX];
+	ssize_t n;
+	int in, out;
+
+	if (st->st_size > VAR_FILE_MAX || var_files >= VAR_FILES_MAX || var_bytes + st->st_size > VAR_BYTES_MAX) {
+		var_skipped++;
+		return;
+	}
+	in = open(from, O_RDONLY, 0);
+	if (in < 0) {
+		var_failed++;
+		return;
+	}
+	out = open(to, O_WRONLY | O_CREAT, st->st_mode & 07777);
+	if (out < 0) {
+		var_failed++;
+		close(in);
+		return;
+	}
+	while ((n = read(in, data, sizeof(data))) > 0) {
+		if (write(out, data, (size_t)n) != n) {
+			var_failed++;
+			break;
+		}
+		var_bytes += n;
+	}
+	close(out);
+	close(in);
+	chown(to, (int)st->st_uid, (int)st->st_gid);
+	chmod(to, st->st_mode & 07777);
+	var_files++;
+}
+
+/* from, to: absolute; rel: the same place from /private/var ("" at the top) */
+static void
+var_copy(const char *from, const char *to, const char *rel, int depth)
+{
+	static char buffers[VAR_DEPTH_MAX][4096];
+	char *buf = buffers[depth];
+	off_t pos = 0;
+	ssize_t n;
+	int fd = open(from, O_RDONLY | O_DIRECTORY, 0);
+
+	if (fd < 0) {
+		var_failed++;
+		return;
+	}
+	while ((n = getdirentries(fd, buf, 4096, &pos)) > 0) {
+		for (char *p = buf; p < buf + n;) {
+			struct dirent *de = (struct dirent *)(void *)p;
+			static char link[1024];
+			char fromx[900], tox[900], relx[900];
+			struct stat st;
+			size_t lf, lt, lr, ln = strlen(de->d_name);
+
+			if (de->d_reclen == 0) {
+				break;
+			}
+			p += de->d_reclen;
+			if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) {
+				continue;
+			}
+			lf = strlen(from);
+			lt = strlen(to);
+			lr = strlen(rel);
+			if (lf + ln + 2 > sizeof(fromx) || lt + ln + 2 > sizeof(tox) || lr + ln + 2 > sizeof(relx)) {
+				var_skipped++;
+				continue;
+			}
+			strcpy(fromx, from);
+			fromx[lf] = '/';
+			strcpy(fromx + lf + 1, de->d_name);
+			strcpy(tox, to);
+			tox[lt] = '/';
+			strcpy(tox + lt + 1, de->d_name);
+			strcpy(relx, rel);
+			if (lr) {
+				relx[lr++] = '/';
+			}
+			strcpy(relx + lr, de->d_name);
+			if (var_listed(relx, var_none, sizeof(var_none) / sizeof(var_none[0])) || lstat(fromx, &st) != 0) {
+				continue;
+			}
+			switch (st.st_mode & 0170000) {
+			case 0040000:
+				if (mkdir(tox, st.st_mode & 07777) != 0) {
+					var_failed++;
+					break;
+				}
+				chown(tox, (int)st.st_uid, (int)st.st_gid);
+				chmod(tox, st.st_mode & 07777);
+				var_dirs++;
+				if (depth + 1 < VAR_DEPTH_MAX && !var_listed(relx, var_empty, sizeof(var_empty) / sizeof(var_empty[0]))) {
+					var_copy(fromx, tox, relx, depth + 1);
+				}
+				break;
+			case 0120000: {
+				ssize_t len = readlink(fromx, link, sizeof(link) - 1);
+
+				if (len >= 0) {
+					link[len] = 0;
+					symlink(link, tox);
+					var_links++;
+				}
+				break;
+			}
+			case 0100000:
+				var_copy_file(fromx, tox, &st);
+				break;
+			default:
+				var_skipped++;
+			}
+		}
+	}
+	close(fd);
+}
+
 int
 main(int argc, char **argv, char **envp)
 {
@@ -121,6 +272,21 @@ main(int argc, char **argv, char **envp)
 	if (fd > 2) {
 		close(fd);
 	}
+	/* the kernel's 1024 vnodes are soon gone with the whole job list running: the rule of init.c, configure_vnodes */
+	{
+		unsigned long long memsize = 0;
+		size_t len = sizeof(memsize);
+		int vnodes = 32768;
+
+		if (sysctlbyname("hw.memsize", &memsize, &len, NULL, 0) == 0 && memsize / 65536 + 1024 < 32768) {
+			vnodes = (int)(memsize / 65536) + 1024;
+		}
+		if (sysctlbyname("kern.maxvnodes", NULL, NULL, &vnodes, sizeof(vnodes)) != 0) {
+			printf("hfsroot: kern.maxvnodes: %s\n", strerror(errno));
+		} else {
+			printf("hfsroot: up to %d vnodes\n", vnodes);
+		}
+	}
 	memset(&args, 0, sizeof(args));
 	args.fspec = "/dev/ufs_userdata";
 	args.journal_disable = 1;
@@ -146,9 +312,20 @@ main(int argc, char **argv, char **envp)
 			static char target[128];
 			char *av[] = { "/sbin/launchd", NULL };
 
+			/* a second way to the volume's /private/var, for the copy, before the memory filesystem covers it */
+			int bound = mount("bindfs", "/oldvar", MNT_RDONLY, (void *)"/flash/private/var") == 0;
+
+			if (!bound) {
+				printf("hfsroot: bindfs of /private/var: %s\n", strerror(errno));
+			}
 			if (mount("ramfs", "/flash/private/var", 0, NULL) != 0) {
 				printf("hfsroot: memory filesystem on /private/var: %s\n", strerror(errno));
 			} else {
+				if (bound) {
+					var_copy("/oldvar", "/flash/private/var", "", 0);
+					printf("hfsroot: /private/var in memory: %ld directories, %ld links, %ld files, %ld bytes; "
+					    "%ld left out, %ld failed\n", var_dirs, var_links, var_files, var_bytes, var_skipped, var_failed);
+				}
 				strcpy(target, "/flash ");
 				strcpy(target + 7, out ? out : "cores");
 				if (sysctlbyname("kern.hakios_switch_root", NULL, NULL, target, strlen(target)) != 0) {

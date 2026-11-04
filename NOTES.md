@@ -1,5 +1,13 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## 2026-11-04 ~14:35 APPLE LOGO ON THE SCREEN; 5 MINUTES WITHOUT A PANIC, READ ONLY (claude-display)
+- CORRECTION to the 14:15 entry: the launchd run did not end by the timer. watchdogd died (SIGTRAP, no IOWatchdog) and _PanicOnCrash ended it at about 33 s; that is also the log gap.
+- Added: MiniIOWatchdog.cpp (boot-arg iowatchdog=1, port of old patches 0040, 0045), hfsroot raises kern.maxvnodes (1024 was running out) and copies /private/var's directories, links and files up to 64 KB into the memory filesystem.
+- Observed: run logs/141802-run.log (203 s, -v), the user saw the Apple logo on the phone. Run logs/142233-run.log (303 s, no -v, 32768 vnodes): no panic, the timer ended it, SpringBoard[5] and backboardd[36] job state running, not seen to exit. backboardd calls the framebuffer: 7 swaps, surfaces 0 0 0 0 (nothing to show yet). MiniIOSurface selectors 40 and 41 not implemented.
+- Crash loops seen: syncdefaultsd, CommCenter, analyticsd, installcoordinationd, mobileactivationd, cryptexd. Causes not read. "Unable to find persona with type 6": usermanagerd's boot task is skipped under rd=md0.
+- Logo moving up: the user traced it to [oosexgang] lines printed when commands run. Those strings are in u-boot cmd/hakios.c; the loader mutes itself during a run (loader.c:3478), so what prints during a run is not established. Hypothesis: U-Boot's console on the same framebuffer, driven by xl's polling.
+- Next: read why the crash-looping daemons die, MiniIOSurface 40/41, HakiOS's CA plug-in and input injection (the root has the old tree's: "no SweetGPU service"). All RAM only, nothing written to userdata.
+
 ## 2026-11-04 ~14:15 APPLE'S LAUNCHD RUNS FROM THE iOS ROOT ON THE HAKIOS KERNEL, READ ONLY (claude-display)
 - userland/src/hfsroot.c (ramdisk built by a scratch script: mkapfs of sbin/launchd=hfsroot + empty flash, dev, private/preboot): mounts /dev/ufs_userdata read only on /flash, ramfs on /flash/private/var, kern.hakios_switch_root "/flash cores" (the root has no mnt1, and private/preboot holds the cryptexes), execs /sbin/launchd. No ufs_write, block devices refuse writes.
 - Bug fixed: ufs_strategy used buf_dataptr directly, file reads through cluster I/O have no kernel address: memmove to NULL panic in ufs_request (logs/140700-run.log). Now buf_map as ufs_data_strategy and old sweet_ufs do.
