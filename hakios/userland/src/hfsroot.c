@@ -3,7 +3,7 @@
  * the Pixel 4a, which has no `darwin` partition). Needs ufs=2, whose block devices refuse every write.
  *
  * It mounts /dev/ufs_userdata read only on /flash, says what is there, and stops (exit panics the kernel, ending the
- * run). hfsroot_wait=N: stay N seconds first.
+ * run). hfsroot_wait=N: stay N seconds first. hfsroot_top=N: see top_watch.
  *
  * hfsroot_launchd=1 goes on: a memory filesystem on /private/var, since the volume's own cannot be written, with a
  * copy of the volume's directories, links and small files (var_copy), the
@@ -245,6 +245,106 @@ var_copy(const char *from, const char *to, const char *rel, int depth)
 	close(fd);
 }
 
+/*
+ * hfsroot_top=N: a process beside launchd that says every N seconds who has had the processors, and how SpringBoard
+ * and backboardd are doing (no system log can be read in this setup). cputop.c, with the raw system call.
+ */
+#define SYS_proc_info           336
+#define TOP_MAX                 1024
+struct top_task {
+	uint64_t vsize, rsize, user, system, tuser, tsystem;
+	int32_t policy, faults, pageins, cow, sent, received, mach, unix_calls, csw, threads, running, priority;
+};
+static struct top_sample { int pid; uint64_t time; } top_last[TOP_MAX], top_now[TOP_MAX];
+static int top_pids[TOP_MAX];
+
+static int
+top_task_of(int pid, struct top_task *t)
+{
+	return mini_syscall(SYS_proc_info, 2, pid, 4 /* PROC_PIDTASKINFO */, 0, (long)t, sizeof(*t)) == sizeof(*t);
+}
+
+static void
+top_name(int pid, char *name)
+{
+	static char info[136];		/* struct proc_bsdinfo: the short name at 48, the long one at 64 */
+
+	strcpy(name, "?");
+	if (mini_syscall(SYS_proc_info, 2, pid, 3 /* PROC_PIDTBSDINFO */, 0, (long)info, sizeof(info)) == sizeof(info)) {
+		info[64 + 31] = 0;
+		strcpy(name, info[64] ? info + 64 : info + 48);
+	}
+}
+
+static uint64_t
+top_clock(void)
+{
+	uint64_t v;
+
+	__asm__ volatile("isb; mrs %0, cntvct_el0" : "=r"(v));
+	return v;
+}
+
+static void
+top_watch(long seconds)
+{
+	int last_count = 0;
+	uint64_t before = top_clock(), start = before;
+
+	for (;;) {
+		long bytes, n = 0;
+		uint64_t at, span;
+
+		for (long i = 0; i < seconds; i++) {
+			usleep(1000000);
+		}
+		bytes = mini_syscall(SYS_proc_info, 1, 1 /* PROC_ALL_PIDS */, 0, 0, (long)top_pids, sizeof(top_pids));
+		at = top_clock();
+		span = at - before;
+		printf("hfstop: %ld s:", (long)((at - start) / 19200000));
+		for (long i = 0; i < bytes / (long)sizeof(int) && n < TOP_MAX; i++) {
+			struct top_task t;
+			uint64_t then = 0;
+			long percent;
+			char name[40];
+
+			if (top_pids[i] <= 0 || !top_task_of(top_pids[i], &t)) {
+				continue;
+			}
+			top_now[n].pid = top_pids[i];
+			top_now[n].time = t.user + t.system;
+			for (int j = 0; j < last_count; j++) {
+				if (top_last[j].pid == top_pids[i]) {
+					then = top_last[j].time;
+					break;
+				}
+			}
+			percent = span ? (long)((top_now[n].time - then) * 100 / span) : 0;
+			n++;
+			top_name(top_pids[i], name);
+			if (percent >= 3) {
+				printf(" %s[%d] %ld%%", name, top_pids[i], percent);
+			}
+		}
+		printf("\n");
+		for (long i = 0; i < n; i++) {
+			struct top_task t;
+			char name[40];
+
+			top_name(top_now[i].pid, name);
+			if ((!strcmp(name, "SpringBoard") || !strcmp(name, "backboardd")) && top_task_of(top_now[i].pid, &t)) {
+				printf("hfstop: %s[%d]: %ld ms of processor, %d threads, %d running, %d mach msgs out %d in, "
+				    "%d mach calls, %d unix calls, %ld MB\n", name, top_now[i].pid,
+				    (long)((t.user + t.system) / 19200), t.threads, t.running, t.sent, t.received, t.mach,
+				    t.unix_calls, (long)(t.rsize >> 20));
+			}
+		}
+		memcpy(top_last, top_now, sizeof(top_now[0]) * (size_t)n);
+		last_count = (int)n;
+		before = at;
+	}
+}
+
 int
 main(int argc, char **argv, char **envp)
 {
@@ -333,6 +433,9 @@ main(int argc, char **argv, char **envp)
 				} else {
 					chdir("/");
 					printf("hfsroot: the volume is the root; launchd next\n");
+					if (boot_arg("hfsroot_top") != NULL && fork() == 0) {
+						top_watch(parse(boot_arg("hfsroot_top")));
+					}
 					execve(av[0], av, envp);
 					printf("hfsroot: execve %s: %s\n", av[0], strerror(errno));
 				}
