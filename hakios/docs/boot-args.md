@@ -2,7 +2,7 @@
 
 Made by `tools/boot-args.py --markdown`; CI fails if it is out of date with the source (`tools/boot-args.py --check`).
 
-Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **339 arguments**: 276 read by the kernel, 14 by the loader, 59 by user space (one is read in more than one place).
+Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **340 arguments**: 277 read by the kernel, 14 by the loader, 59 by user space (one is read in more than one place).
 
 This is a catalogue of what exists and who reads it, not a manual. What an argument means is in the head of the file that reads it. The stable switches have a symbol in the configuration (`tools/hakios-config.py help SYMBOL`, `docs/configs.md`); the rest are the knobs of bring-up (a driver's steps, pauses, traces, test modes) and can change with the driver. Any of them can be given in a configuration with `CONFIG_BOOTARGS="name=value ..."`, which checks that each name is in this list.
 
@@ -395,7 +395,7 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `ufs` | L | `loader.c` | `CONFIG_UFS` |  |
 | `ufs_probe` | L | `loader.c` | `CONFIG_UFS_PROBE` |  |
 
-## User space (27)
+## User space (28)
 
 | Argument | Layer | Read by | Configuration | Set by |
 |---|---|---|---|---|
@@ -426,3 +426,4 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `switcher_wallpaper` | U | `inject_sb.c` | `CONFIG_SWITCHER_WALLPAPER` |  |
 | `var_hfs` | U | `init.c` | `CONFIG_VAR_HFS` |  |
 | `var_store` | U | `init.c` | `CONFIG_VAR_STORE` |  |
+| `vtimer_intid` | K | `gic_v3_irq.c` | `CONFIG_VTIMER_INTID` |  |

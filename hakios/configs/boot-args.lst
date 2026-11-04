@@ -305,6 +305,7 @@ virtio_blk	k
 virtio_input	k
 virtio_net	k
 virtio_sound	k
+vtimer_intid	k
 wifi	k
 wifi_again	k
 wifi_ask	k

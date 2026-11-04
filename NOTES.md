@@ -19,6 +19,14 @@
 - **Privacy & Safety**: All remote git pushes remain halted as requested. Device currently untouched on working hold kernel.
 
 
+## 2026-11-04 ~07:10 HAKIOS: USER SPACE AND TOUCH CONTROLLER UP ON THE PIXEL 4A (claude-display)
+- THE BUG: the kernel stopped after MiniIOMobileFramebuffer because it had the virtual timer on PPI 27. This SoC's is 19 (device tree arm,armv8-timer third entry 16+3; old tree patch 0017). Everything ran until the first timed wait, then nothing. Fixed: boot-arg vtimer_intid=N in xnu/files/osfmk/arm64/gic_v3_irq.c (default 27), CONFIG_BOOTARGS in sunfish.config.
+- Observed, USB log (logs/070526-run.log in ~/hakios, local): "Hello from user space on Darwin!", process 1, thermal lines over time (47.9 C at 85 s), `ftm5: FTM5 0x49 err=0 ready=1`, scan mode active err=0, running. Touch events not tested: nobody at the phone, and hello does not read touches. The driver wrote PM6150 GPIO4 (mode=0 src=0 before), the one allowed PMIC write.
+- How to run with nobody there: phone in fastboot, build the --usb image (header v2, pagesize 4096; xl enter's own call lacks them), then DEVICE=sunfish XL_FIRMWARE=u-boot XL_HOME=fastboot XL_RAMDISK=userland/hello ./xl run. A hung kernel on bootcpu=7 is seen by the loader, which restarts into fastboot: no buttons needed so far. `./xl screenshot` reads the screen. A second kernel in one loader session dies: reboot to bootloader between runs.
+- The earlier reading of run 2 ("fits the timer firing") was wrong: that restart was most likely the loader's hang detection.
+- Panic text doubled on screen (every character exactly twice), clean in the log. Cause not proven; see the next run's screenshot.
+- Not yet: multi-core (cpus=8 hung early before the timer fix; retest), iOS root (ufs=2 needs the loader's storage path, touches storage: ask the user), real touch test.
+
 ## 2026-11-04 ~06:25 THE HAKIOS KERNEL BOOTS ON THE PIXEL 4A THROUGH U-BOOT (claude-display)
 - U-Boot: ~/hakios/u-boot = sm7150-mainline f8c04469 + uefi/u-boot/hakios.patch + files (hakios-uefi branch u-boot, 65621b6) + devices/sunfish/u-boot/files (defconfig, env without scsi scan, dts with the payload at 0xF0000000 and 19 Android carve-outs). Loader: platform_sunfish by framebuffer 0x9c000000, small cores 0x3f, no logdump writes. Image: ~/hakios/build/u-boot-sunfish-hakios-signed.img.
 - Run 1, 06:03, args debug=0x14e -v serial=3 touchscreen=1 buttons=0 panel_autorefresh=1 thermal=1, one core (user's photo, local only): Darwin 22.5.0 up, GIC v3, 14 drivers listed, thermal 25 of 25 sensors, hottest ddr 56.6 C. Last line MiniIOMobileFramebuffer: IOMFBDisplayRefresh 60 Hz. Nothing after it for minutes: no ftm5 lines, no thermal lines, no waiting-for-root. No reset. cmdpanel: "no pingpong does tear checks ... nothing done", yet the text kept updating until then: why the panel refreshes is unknown; my prediction of a freeze after U-Boot was not what happened.
