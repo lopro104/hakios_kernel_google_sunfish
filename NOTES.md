@@ -19,6 +19,11 @@
 - **Privacy & Safety**: All remote git pushes remain halted as requested. Device currently untouched on working hold kernel.
 
 
+## 2026-11-04 ~06:00 FIRST BOOT ON THE HAKIOS PATH HELD: U-BOOT CANNOT START THE KERNEL (claude-display)
+- Read from the file, not run: devices/sunfish/prebuilt/u-boot.bin (sm7150-mainline tauchgang) has no `hakios` command and no HKUB string; bootcmd=bootefi bootmgr; pause; run menucmd. tools/mkubootimg.py's image relies on that command, so build/u-boot-sunfish-hakios-signed.img should stop in U-Boot. Phone not rebooted; still on the old image.
+- Needed: HakiOS's U-Boot files (hakios-uefi repo: uefi/u-boot/files/cmd/hakios.c, lib/efi_loader/efi_qcom_usb.c; docs/u-boot.md) on this U-Boot, a sunfish device tree reserving the payload at 0xF0000000 (check that it is free here), and the loader recognising the phone (it goes by the framebuffer address; sunfish is 0x9c000000).
+- Storage facts for that boot: without ufs_write=1 the kernel writes nothing; the image's args have no ufs=. The loader writes a few KB to a partition named logdump if it finds one; not confirmed whether sunfish has one.
+
 ## 2026-11-04 ~05:55 HAKIOS: CPU SPEED + MEMORY VOTE FOR SUNFISH, BUILT BUT OFF BY DEFAULT, NOT RUN (claude-display)
 - devices/sunfish/drivers/power/hakios.cpufreq_osm.c (OSM 0x18323000/0x18325800, top non-boost row of groups with our cores; firmware locator at 0x0c3f000c for cmd-db instead of the POCO's 0x80860000), selected by CONFIG_HAKIOS_CPUFREQ_OSM in drivers/power/hakios.cpufreq.c. EPSS code only without that symbol; reference build not rebuilt here. Kernel links in ~/hakios at 05:49, list has cpufreq and cpufreq_osm; 0x18591000 not reached on this config by construction.
 - cpufreq=1 is NOT in the default args. The old tree slowed hot cores from 95 C; this tree has only thermal's stop at 105 C (loader_return, never seen firing). Give cpufreq=1 by hand after kern.hakios.thermal_sensors reads sensibly on the phone. The memory vote only happens with cpufreq=1 too, so the first boot is at firmware clocks.
