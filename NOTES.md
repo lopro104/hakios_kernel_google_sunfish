@@ -19,6 +19,13 @@
 - **Privacy & Safety**: All remote git pushes remain halted as requested. Device currently untouched on working hold kernel.
 
 
+## 2026-11-04 ~06:25 THE HAKIOS KERNEL BOOTS ON THE PIXEL 4A THROUGH U-BOOT (claude-display)
+- U-Boot: ~/hakios/u-boot = sm7150-mainline f8c04469 + uefi/u-boot/hakios.patch + files (hakios-uefi branch u-boot, 65621b6) + devices/sunfish/u-boot/files (defconfig, env without scsi scan, dts with the payload at 0xF0000000 and 19 Android carve-outs). Loader: platform_sunfish by framebuffer 0x9c000000, small cores 0x3f, no logdump writes. Image: ~/hakios/build/u-boot-sunfish-hakios-signed.img.
+- Run 1, 06:03, args debug=0x14e -v serial=3 touchscreen=1 buttons=0 panel_autorefresh=1 thermal=1, one core (user's photo, local only): Darwin 22.5.0 up, GIC v3, 14 drivers listed, thermal 25 of 25 sensors, hottest ddr 56.6 C. Last line MiniIOMobileFramebuffer: IOMFBDisplayRefresh 60 Hz. Nothing after it for minutes: no ftm5 lines, no thermal lines, no waiting-for-root. No reset. cmdpanel: "no pingpong does tear checks ... nothing done", yet the text kept updating until then: why the panel refreshes is unknown; my prediction of a freeze after U-Boot was not what happened.
+- Run 2, 06:21:14, same + cpus=8 bootcpu=7 loader_return_after=120: back in fastboot by itself at 06:23:08 (polled every 5 s). Fits the timer firing, but no log proves it, and a crash cannot be excluded; timer vs. screen not settled by this. What the screen showed: not yet reported.
+- A loader reset lands in fastboot, not Android, in this run. I only checked that after sending the image; reset with userdata holding iOS is worth keeping in mind.
+- Next: read the kernel's log over USB (xl run, or mkpayload --usb) instead of photos. Phone is in fastboot, not iOS; userdata not touched by these runs (no ufs=, no SCSI scan).
+
 ## 2026-11-04 ~06:00 FIRST BOOT ON THE HAKIOS PATH HELD: U-BOOT CANNOT START THE KERNEL (claude-display)
 - Read from the file, not run: devices/sunfish/prebuilt/u-boot.bin (sm7150-mainline tauchgang) has no `hakios` command and no HKUB string; bootcmd=bootefi bootmgr; pause; run menucmd. tools/mkubootimg.py's image relies on that command, so build/u-boot-sunfish-hakios-signed.img should stop in U-Boot. Phone not rebooted; still on the old image.
 - Needed: HakiOS's U-Boot files (hakios-uefi repo: uefi/u-boot/files/cmd/hakios.c, lib/efi_loader/efi_qcom_usb.c; docs/u-boot.md) on this U-Boot, a sunfish device tree reserving the payload at 0xF0000000 (check that it is free here), and the loader recognising the phone (it goes by the framebuffer address; sunfish is 0x9c000000).

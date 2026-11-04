@@ -261,6 +261,9 @@ clean_dcache(uint64_t start, uint64_t end)
 /* ------------------------------------------------------------------------ */
 /* Log persistence: raw write to a GPT partition (phone only)               */
 
+/* A phone that keeps no log on its storage (sunfish): the log comes back over USB and on the screen only. */
+static int log_partition_off;
+
 static efi_block_io *
 find_log_partition(void)
 {
@@ -270,6 +273,9 @@ find_log_partition(void)
 	efi_handle *handles;
 	uint64_t count;
 
+	if (log_partition_off) {
+		return NULL;
+	}
 	if (EFI_ERROR(BS->locate_handle_buffer(ByProtocol, &part_guid, NULL, &count, &handles))) {
 		return NULL;
 	}
@@ -586,6 +592,14 @@ static const struct platform platform_redwood = {
 	 * (XNU's machine_routines.c, ml_choose_slow_core_partners()).
 	 */
 	.small_cores = 0x0f,
+};
+
+static const struct platform platform_sunfish = {
+	/* The Pixel 4a, SM7150: the GIC at the same place as the reference phone's. No log kept in a partition here. */
+	.name = "sunfish", .io_base = 0x00400000, .io_size = 0x3FC00000,
+	.gic_dist = 0x17A00000, .gic_redist = 0x17A60000, .uart = 0,
+	.cores = 8, .core_shift = 8,
+	.small_cores = 0x3f,            /* 0-5 Cortex-A55, 6-7 Cortex-A76 */
 };
 
 /* ------------------------------------------------------------------------ */
@@ -4345,6 +4359,9 @@ efi_main(efi_handle image, efi_system_table *st)
 		SCREEN.stride = GOP->mode->info->pixels_per_scanline * 4;
 		if (SCREEN.base == 0xE1000000ULL) {
 			PLAT = &platform_redwood;
+		} else if (SCREEN.base == 0x9C000000ULL) {
+			PLAT = &platform_sunfish;
+			log_partition_off = 1;
 		} else {
 			ramfb_phone_screen();
 		}
