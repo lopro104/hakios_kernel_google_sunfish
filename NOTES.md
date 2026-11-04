@@ -19,9 +19,13 @@
 - **Privacy & Safety**: All remote git pushes remain halted as requested. Device currently untouched on working hold kernel.
 
 
+## 2026-11-04 ~05:50 HAKIOS: THERMAL ON FOR SUNFISH, COMPILED ONLY (claude-display)
+- devices/sunfish/drivers/power/hakios.thermal_sm7150.c (25 sensors, from sweet_thermal.h), selected by CONFIG_HAKIOS_THERMAL_SM7150 in drivers/power/hakios.thermal.c (reference table otherwise). thermal=1 is back in the config's args. Kernel links (~/hakios, 05:47), drivers list has thermal and thermal_sm7150. Not run. The stop at 105 C hands back to the loader; never seen firing.
+- Two copies of the tree: ~/ios-sunfish/hakios is tracked, ~/hakios builds (research/hakios-xnu-tools is a symlink to it). I edit the first and copy to the second; they can drift.
+
 ## 2026-11-04 ~05:35 HAKIOS: KERNEL LINKS WITH FTM5 + CMDPANEL; POCO-ADDRESS DRIVERS OFF (claude-display)
 - Built in research/hakios-xnu-tools (hakios/ has no toolchain or xnu-src yet): make-kernel reports built, drivers list includes cmdpanel and ftm5. Not run.
-- sunfish.config had cpufreq=1 and thermal=1 from sm7150.config through `hakios-config.py args` (Makefile ARGS). Addresses are the POCO X5 Pro's: EPSS 0x18591000 vs OSM 0x18323000, TSENS 0xc263000 vs 0xc222000/0xc223000. Now off for sunfish in both trees. Consequence: no thermal protection and CPUs at whatever the firmware left until ported. Do not run heavy loads on this path.
+- sunfish.config had cpufreq=1 and thermal=1 from sm7150.config through `hakios-config.py args` (Makefile ARGS). cpufreq's EPSS 0x18591000 is the POCO X5 Pro's; this SoC has OSM at 0x18323000. Off. CORRECTION: this entry first said thermal's 0xc263000 was wrong too. It was not: 0xc222000/0xc223000 are the SROT blocks, the readings are at 0xc263000/0xc265000 as on the POCO (old tree read them there). Only the table was another chip's; fixed in the entry above.
 - Boot args for a first try: config args + panel_autorefresh=1 buttons=0. Antigravity's image at build/u-boot-sunfish-hakios.img predates all of this.
 - PRIVACY: origin/hakios deleted from the public fork lopro104/ios-sunfish (it held serial, Wi-Fi name, BSSID); default branch now sunfish-ios. Commit 2eb24d8 still reachable by ID until GitHub purges it (user's request to make). Local hakios still holds that data in NOTES.md and tools/: scrub or push hakios/ with fresh history. NO PUSHES until the user says.
 - Next: thermal table for sunfish (tools/dt-thermal.py --c), then OSM cpufreq from sweet_cpufreq.c.

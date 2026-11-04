@@ -1,0 +1,6 @@
+# devices/sunfish/drivers/power/conf: what only the Pixel 4a has.
+
+driver THERMAL_SM7150
+	file    bsd/dev/hakios.thermal_sm7150.c
+	requires THERMAL
+	help    the temperature sensors' table of the SM7150, for hakios.thermal.c in place of the reference phone's

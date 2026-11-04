@@ -90,6 +90,13 @@ say(const char *format, ...)
 #define TEMP_MIN_TENTHS         (-400)
 #define TEMP_MAX_TENTHS         1600
 
+#ifdef HAKIOS_THERMAL_SM7150
+/* another SoC's table, in its device's repository (devices/sunfish/drivers/power/hakios.thermal_sm7150.c) */
+#include <sys/hakios.thermal_sensors.h>
+extern const struct hakios_thermal_sensor hakios_thermal_sm7150[HAKIOS_THERMAL_SM7150_SENSORS];
+#define sensors         hakios_thermal_sm7150
+#define NSENSORS        HAKIOS_THERMAL_SM7150_SENSORS
+#else
 /* made by tools/dt-thermal.py from the phone's device tree: name, block, sensor, slow down at, gives up at (millidegrees) */
 static const struct sensor_info {
 	const char *    name;
@@ -127,6 +134,7 @@ static const struct sensor_info {
 	{ "camera-0", 0xc265000, 11, 100000, 125000 },
 };
 #define NSENSORS        ((unsigned)(sizeof(sensors) / sizeof(sensors[0])))
+#endif
 #define REFERENCE_TM0   0xc263000u
 #define REFERENCE_TM1   0xc265000u
 
