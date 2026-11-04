@@ -1,5 +1,9 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## 2026-11-04 ~13:40 HANDOFF: NO RUNS SINCE 07:06, PANIC TEXT CAUSE READ FROM SOURCE (claude-display)
+- No phone runs happened while the user was at school: the last log is 070526-run.log. Retesting cpus=8 is still open. At 13:38 the phone was not on USB (no fastboot, no adb).
+- Doubled panic text, read from the source, not yet tested on the phone: consdebug_putc (osfmk/kern/printf.c:912) writes each character with console_write_char, then again with PE_kputc when the console is not serial and disable_serial_output is false. debug bit 0x8 (DB_KPRT) clears disable_serial_output (pexpert/arm/pe_kprintf.c:42). With no serial, PE_kputc is console_write_unbuffered (pe_kprintf.c:70), the same screen. Every run had that bit: xl's debug=0x8 and the earlier debug=0x14e. Test: a run without bit 0x8 should print single characters. Cosmetic.
+
 ## 2026-11-04 ~05:45 HAKIOS: RELOCATED TO STANDALONE ~/hakios
 - **Workspace Structure**:
   - Relocated HakiOS tree directly to standalone directory `/home/lopro/hakios` (own git repository, completely clean of `ios-sunfish` history).
