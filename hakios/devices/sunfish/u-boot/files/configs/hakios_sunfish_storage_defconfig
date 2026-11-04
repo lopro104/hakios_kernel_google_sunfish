@@ -1,0 +1,9 @@
+# hakios_sunfish_defconfig with the phone's disks visible (scsi scan in the environment), for reading them through the
+# loader. Everything in U-Boot that could write to them on its own is left out: EFI variables are not stored in a file on
+# an EFI system partition, and there is no fastboot flash.
+#include "hakios_sunfish_defconfig"
+
+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/hakios-sunfish-storage.env"
+# CONFIG_EFI_VARIABLE_FILE_STORE is not set
+CONFIG_EFI_VARIABLE_NO_STORE=y
+# CONFIG_FASTBOOT_FLASH is not set

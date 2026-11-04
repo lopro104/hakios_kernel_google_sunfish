@@ -9,3 +9,5 @@ branch `tauchgang`, commit `f8c04469`, which has its clocks, pins and device tre
 
 The device tree is the fork's with the HakiOS payload reservation and every fixed carve-out of the phone's Android tree added.
 No `scsi scan`, and the loader writes no log to storage on this phone: a first run touches no storage.
+
+`uefi/u-boot/build.sh sunfish_storage` (build-sunfish_storage/) is the same with `scsi scan` first, so the loader can read partitions. It leaves out EFI variable storage and fastboot flash, which could write once the disks are visible.
