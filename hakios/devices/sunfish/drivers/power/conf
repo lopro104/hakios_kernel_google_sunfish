@@ -9,3 +9,8 @@ driver CPUFREQ_OSM
 	file    bsd/dev/hakios.cpufreq_osm.c
 	requires CPUFREQ
 	help    the cores' clock on this SoC's OSM and where its command database is, for hakios.cpufreq.c (cpufreq=1)
+
+driver PM6150_BATTERY
+	file    bsd/dev/hakios.pm6150_battery.c
+	requires BATTERY
+	help    the battery read off the PM6150, read only, with an estimated charge (pm6150_battery=1), for hakios.battery.c
