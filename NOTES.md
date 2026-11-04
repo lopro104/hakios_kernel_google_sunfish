@@ -1,5 +1,11 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## 2026-11-04 ~14:15 APPLE'S LAUNCHD RUNS FROM THE iOS ROOT ON THE HAKIOS KERNEL, READ ONLY (claude-display)
+- userland/src/hfsroot.c (ramdisk built by a scratch script: mkapfs of sbin/launchd=hfsroot + empty flash, dev, private/preboot): mounts /dev/ufs_userdata read only on /flash, ramfs on /flash/private/var, kern.hakios_switch_root "/flash cores" (the root has no mnt1, and private/preboot holds the cryptexes), execs /sbin/launchd. No ufs_write, block devices refuse writes.
+- Bug fixed: ufs_strategy used buf_dataptr directly, file reads through cluster I/O have no kernel address: memmove to NULL panic in ufs_request (logs/140700-run.log). Now buf_map as ufs_data_strategy and old sweet_ufs do.
+- Run logs/140905-run.log, args hfsroot_launchd=1 launchd_unsecure_cache=1 wdt=-1 ufs=2 cpus=8 bootcpu=7 touchscreen=1 ...: launchd's and dyld's Mach-O headers read correctly, libignition "hello from launchd.1", Darwin Bootstrapper 7.0.0, the whole job list imported, pids up to at least 135. rd=md0 makes launchd skip boot tasks, as HakiOS intends (init.c). No panic; the loader's 150 s timer ended it.
+- Not known: whether anything reached the screen (xl screenshot said the loader has no display during this run); why the kernel log's last line is at about 59 s of a 150 s run. Daemons crash with an empty /private/var; HakiOS init makes a skeleton (etc/var.skel) and hfsroot does not yet. The root's old-tree injected library says no SweetGPU service, software renderer.
+
 ## 2026-11-04 ~14:05 U-BOOT'S SCSI SCAN AND UFS=2 READ THE PHONE'S STORAGE (claude-display)
 - Run logs/135908-run.log in ~/hakios (local), user OK, RAM only, u-boot/build-sunfish_storage, args ufs=2 ufs_check=1, hello, no ufs_write, no iOS root.
 - Observed: 6 UFS units, every GPT header and table crc right. Kernel: "ufs: check done: 210 requests, 0 errors". Hashes of aop, tz, abl: loader and kernel agree, and slots a and b agree. Not compared with ROM images. "read failed (22)" for modem, xbl, hyp: the reference sizes in the code are larger than these partitions; not read errors.
