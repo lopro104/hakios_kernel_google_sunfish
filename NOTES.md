@@ -4,7 +4,7 @@
 - Run logs/135908-run.log in ~/hakios (local), user OK, RAM only, u-boot/build-sunfish_storage, args ufs=2 ufs_check=1, hello, no ufs_write, no iOS root.
 - Observed: 6 UFS units, every GPT header and table crc right. Kernel: "ufs: check done: 210 requests, 0 errors". Hashes of aop, tz, abl: loader and kernel agree, and slots a and b agree. Not compared with ROM images. "read failed (22)" for modem, xbl, hyp: the reference sizes in the code are larger than these partitions; not read errors.
 - userdata: lba 2482176..31080445. HFSX header intact: 210778 files, 154124 folders, 109 GiB, 92.5 GiB free, unmounted bit set, journal in use. Modify date 04:03 UTC = 06:03 EET today, the same minute as the last live iOS log and the first HakiOS reboot, so the header was not changed by the later passes through Android. Only the header was read, not the whole volume.
-- A 512 MiB partition `esp` exists on unit 0, right after userdata. Origin not checked. It is what the EFI variable file would have been written to, so leaving that out of the storage variant was needed.
+- A 512 MiB partition `esp` exists on unit 0, right after userdata. The user recalls it holding GRUB from a mainline Linux setup, now unused since mainline boots through ABL (contents not read). Leave it. It is what the EFI variable file would have been written to, so leaving that out of the storage variant was needed.
 - Not checked: 68 partitions in the kernel's device line against 74 in ufs_check; that /dev/ufs_userdata exists by name.
 - Next: mount the HFSX root from userdata read-only and start launchd; HakiOS expects root_apfs=ufs_darwin, so this needs work. Writes come after that. See the ~02:10 entry about rebuilding the root without a full backup.
 
