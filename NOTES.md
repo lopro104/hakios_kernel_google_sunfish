@@ -1,5 +1,13 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## 2026-11-04 ~14:05 U-BOOT'S SCSI SCAN AND UFS=2 READ THE PHONE'S STORAGE (claude-display)
+- Run logs/135908-run.log in ~/hakios (local), user OK, RAM only, u-boot/build-sunfish_storage, args ufs=2 ufs_check=1, hello, no ufs_write, no iOS root.
+- Observed: 6 UFS units, every GPT header and table crc right. Kernel: "ufs: check done: 210 requests, 0 errors". Hashes of aop, tz, abl: loader and kernel agree, and slots a and b agree. Not compared with ROM images. "read failed (22)" for modem, xbl, hyp: the reference sizes in the code are larger than these partitions; not read errors.
+- userdata: lba 2482176..31080445. HFSX header intact: 210778 files, 154124 folders, 109 GiB, 92.5 GiB free, unmounted bit set, journal in use. Modify date 04:03 UTC = 06:03 EET today, the same minute as the last live iOS log and the first HakiOS reboot, so the header was not changed by the later passes through Android. Only the header was read, not the whole volume.
+- A 512 MiB partition `esp` exists on unit 0, right after userdata. Origin not checked. It is what the EFI variable file would have been written to, so leaving that out of the storage variant was needed.
+- Not checked: 68 partitions in the kernel's device line against 74 in ufs_check; that /dev/ufs_userdata exists by name.
+- Next: mount the HFSX root from userdata read-only and start launchd; HakiOS expects root_apfs=ufs_darwin, so this needs work. Writes come after that. See the ~02:10 entry about rebuilding the root without a full backup.
+
 ## 2026-11-04 ~13:50 REAL TOUCH WORKS ON THE HAKIOS PATH; 7 CORES; LOADER RESET GOES THROUGH ANDROID (claude-display)
 - Touch, user tapping, logs/134818-run.log (local): hello_touch=6 printed down/move/up from /dev/hakios-touch. Raw chip events decode to the same positions (13 01 f9 b1 5c -> x 505, y 1483 -> 468, 634 in thousandths). Swipe: y 298 to 859. touch_log=1 added to ftm5 (raw events, a line per 1000 polls). The FIFO count in byte 7 rose to 0x11 during a logged swipe: each logged event took ~11 ms, so probably the logging itself; not checked without it. The run just before (134329) had no touches: the user was not tapping or it is unexplained; never asked.
 - cpus=8 bootcpu=7 vtimer_intid=19: 7 processors running (the eighth is the loader's core 0); slower cores start 25 s later by design. Run logs/134011-run.log. The panic at the end of a hello run is pid 1 exiting, not a fault.
