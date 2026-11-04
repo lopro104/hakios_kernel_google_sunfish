@@ -562,6 +562,9 @@ touch_ftm5_start(void)
 	return err == 0;
 }
 
+/* boot-arg touch_log=1: the first events as they came from the chip, and a line every 1000 polls */
+static unsigned touch_log, touch_logged, touch_events;
+
 /*
  * Drain the FTM5 event FIFO and report contacts. Each 8-byte read pops one
  * event; byte 7 bits 0-4 count the events still queued (fts_event_handler).
@@ -583,6 +586,12 @@ touch_ftm5(void)
 		}
 		if (ev[0] == 0x00) {
 			break; /* FIFO empty */
+		}
+		touch_events++;
+		if (touch_log && touch_logged < 60) {
+			touch_logged++;
+			printf("ftm5: event %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			    ev[0], ev[1], ev[2], ev[3], ev[4], ev[5], ev[6], ev[7]);
 		}
 		/* Bits 2-3 of byte 0 carry touch-major bits (mainline STMFTS5_MASK_EVENT_ID). */
 		uint8_t kind = ev[0] & 0xf3u;
@@ -696,8 +705,13 @@ touch_thread(void *arg, wait_result_t result)
 		goto out;
 	}
 	printf("ftm5: running, 1080x2340, every 10 ms\n");
-	while (!st.dead) {
+	PE_parse_boot_argn("touch_log", &touch_log, sizeof(touch_log));
+	for (unsigned polls = 1; !st.dead; ++polls) {
 		int err = touch_ftm5();
+		if (touch_log && polls % 1000u == 0) {
+			printf("ftm5: %u polls, %u events, %u errors, IRQ pin %#x\n", polls, touch_events, errors,
+			    touch_rd(st.gpio, TOUCH_GPIO_IO(9)));
+		}
 		if (err) {
 			if ((errors++ % 100u) == 0) {
 				printf("ftm5: report err=%d irq=%#x\n", err, st.irq_status);

@@ -35,6 +35,7 @@ syscall6(long num, long a, long b, long c, long d, long e, long f)
 }
 
 #define SYS_exit    1
+#define SYS_read    3
 #define SYS_write   4
 #define SYS_open    5
 #define SYS_getpid  20
@@ -106,9 +107,9 @@ show_int(int fd, const char *name)
 	}
 }
 
-/* hello_wait=N in the kernel's command line (kern.bootargs): N, or 0 */
+/* hello_<name>=N in the kernel's command line (kern.bootargs), name being wait or touch: N, or 0 */
 static long
-wait_seconds(void)
+hello_arg(const char *name)
 {
 	char args[700];
 	u64 size = sizeof(args);
@@ -118,15 +119,65 @@ wait_seconds(void)
 		return 0;
 	}
 	for (char *c = args; *c; c++) {
-		if (c[0] == 'h' && c[1] == 'e' && c[2] == 'l' && c[3] == 'l' && c[4] == 'o' && c[5] == '_' && c[6] == 'w' &&
-		    c[7] == 'a' && c[8] == 'i' && c[9] == 't' && c[10] == '=') {
-			for (c += 11; *c >= '0' && *c <= '9'; c++) {
-				n = n * 10 + (*c - '0');
+		if (c[0] == 'h' && c[1] == 'e' && c[2] == 'l' && c[3] == 'l' && c[4] == 'o' && c[5] == '_') {
+			char *v = c + 6;
+			const char *m = name;
+
+			while (*m && *v == *m) {
+				v++;
+				m++;
 			}
-			return n;
+			if (!*m && *v == '=') {
+				for (v++; *v >= '0' && *v <= '9'; v++) {
+					n = n * 10 + (*v - '0');
+				}
+				return n;
+			}
 		}
 	}
 	return 0;
+}
+
+/*
+ * hello_touch=N: print what /dev/hakios-touch delivers until N fingers have lifted (every down and up, every
+ * 16th move), positions in thousandths of the screen. read() blocks, so with no touches a run ends by the
+ * loader's timer instead.
+ */
+struct touch_record {
+	u64 time;
+	unsigned type, finger, x, y;
+};
+
+static void
+show_touches(int fd, long lifts)
+{
+	struct touch_record t;
+	long moves = 0;
+	int dev = (int)syscall3(SYS_open, (long)"/dev/hakios-touch", O_RDWR, 0);
+
+	put(fd, "touch: device fd ");
+	put_number(fd, dev);
+	put(fd, ", waiting for fingers\n");
+	if (dev < 0) {
+		return;
+	}
+	while (lifts > 0 && syscall3(SYS_read, dev, (long)&t, sizeof(t)) == (long)sizeof(t)) {
+		if (t.type == 2 && moves++ % 16 != 0) {
+			continue;
+		}
+		put(fd, t.type == 1 ? "touch: down" : t.type == 2 ? "touch: move" : t.type == 3 ? "touch: up" : "touch: other");
+		put(fd, " finger ");
+		put_number(fd, t.finger);
+		put(fd, " x ");
+		put_number(fd, (long)t.x * 1000 / 65535);
+		put(fd, " y ");
+		put_number(fd, (long)t.y * 1000 / 65535);
+		put(fd, "\n");
+		if (t.type == 3) {
+			lifts--;
+		}
+	}
+	put(fd, "touch: done\n");
 }
 
 void
@@ -167,7 +218,8 @@ start(void)
 	 * hello_wait=N: stay N seconds, and say once in five how warm the SoC is. Process 1 is not supposed to exit (doing so
 	 * panics the kernel, which ends the test run), so this is also how a run is made to last.
 	 */
-	for (long second = 0, wait = wait_seconds(); second < wait; second++) {
+	show_touches(fd, hello_arg("touch"));
+	for (long second = 0, wait = hello_arg("wait"); second < wait; second++) {
 		long tv[2] = { 1, 0 };
 
 		syscall6(SYS_select, 0, 0, 0, 0, (long)tv, 0);
