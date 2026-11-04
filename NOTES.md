@@ -19,6 +19,12 @@
 - **Privacy & Safety**: All remote git pushes remain halted as requested. Device currently untouched on working hold kernel.
 
 
+## 2026-11-04 ~05:55 HAKIOS: CPU SPEED + MEMORY VOTE FOR SUNFISH, BUILT BUT OFF BY DEFAULT, NOT RUN (claude-display)
+- devices/sunfish/drivers/power/hakios.cpufreq_osm.c (OSM 0x18323000/0x18325800, top non-boost row of groups with our cores; firmware locator at 0x0c3f000c for cmd-db instead of the POCO's 0x80860000), selected by CONFIG_HAKIOS_CPUFREQ_OSM in drivers/power/hakios.cpufreq.c. EPSS code only without that symbol; reference build not rebuilt here. Kernel links in ~/hakios at 05:49, list has cpufreq and cpufreq_osm; 0x18591000 not reached on this config by construction.
+- cpufreq=1 is NOT in the default args. The old tree slowed hot cores from 95 C; this tree has only thermal's stop at 105 C (loader_return, never seen firing). Give cpufreq=1 by hand after kern.hakios.thermal_sensors reads sensibly on the phone. The memory vote only happens with cpufreq=1 too, so the first boot is at firmware clocks.
+- Test order: boot with panel_autorefresh=1 buttons=0 (args from config) -> touch, screen, thermal readings -> then add cpufreq=1 and watch temperatures.
+- Not ported: a governor that slows hot cores, brightness, battery temperature, GPU (hakios.adreno.c is POCO addresses, off).
+
 ## 2026-11-04 ~05:50 HAKIOS: THERMAL ON FOR SUNFISH, COMPILED ONLY (claude-display)
 - devices/sunfish/drivers/power/hakios.thermal_sm7150.c (25 sensors, from sweet_thermal.h), selected by CONFIG_HAKIOS_THERMAL_SM7150 in drivers/power/hakios.thermal.c (reference table otherwise). thermal=1 is back in the config's args. Kernel links (~/hakios, 05:47), drivers list has thermal and thermal_sm7150. Not run. The stop at 105 C hands back to the loader; never seen firing.
 - Two copies of the tree: ~/ios-sunfish/hakios is tracked, ~/hakios builds (research/hakios-xnu-tools is a symlink to it). I edit the first and copy to the second; they can drift.

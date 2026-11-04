@@ -4,3 +4,8 @@ driver THERMAL_SM7150
 	file    bsd/dev/hakios.thermal_sm7150.c
 	requires THERMAL
 	help    the temperature sensors' table of the SM7150, for hakios.thermal.c in place of the reference phone's
+
+driver CPUFREQ_OSM
+	file    bsd/dev/hakios.cpufreq_osm.c
+	requires CPUFREQ
+	help    the cores' clock on this SoC's OSM and where its command database is, for hakios.cpufreq.c (cpufreq=1)
