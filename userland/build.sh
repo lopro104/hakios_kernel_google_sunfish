@@ -693,6 +693,13 @@ if [ -f $DARWIN/system.manifest ] && [ -f $CACHE/dyld_shared_cache_arm64 ] &&
 			rm -rf sysroot/fw/image && cp -R ../fw-modem/image sysroot/fw/image
 		fi
 	fi
+	# ... and what the Pixel 4a's modem and Wi-Fi read (devices/sunfish/drivers/wifi, mpss=1): /fw/modem, /fw/rmtfs (copies of the
+	# modem's partitions, never written), /fw/tftp, /fw/wlan. Not in the repository: it is the phone's own.
+	if [ -d ../fw-mpss ]; then
+		mkdir -p sysroot/fw
+		rm -rf sysroot/fw/modem sysroot/fw/rmtfs sysroot/fw/tftp sysroot/fw/wlan
+		cp -R ../fw-mpss/modem ../fw-mpss/rmtfs ../fw-mpss/tftp ../fw-mpss/wlan sysroot/fw/
+	fi
 	# ... and the speaker amplifiers' configuration, the phone's /vendor/etc/aw882xx_acf.bin (drivers/audio/hakios.speaker.c,
 	# for sound=3): Android's own register values, which are not in the repository either
 	if [ -f ../fw-audio/aw882xx_acf.bin ]; then
