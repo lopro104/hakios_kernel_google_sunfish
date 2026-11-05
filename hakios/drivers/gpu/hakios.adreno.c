@@ -1,3 +1,4 @@
+#ifndef HAKIOS_ADRENO_A618      /* this file is another GPU's: devices/sunfish/drivers/gpu/hakios.adreno_a618.c there */
 /*
  * The GPU of the POCO X5 Pro (redwood), an Adreno 642L, woken step by step up to a picture that
  * it fills and the panel shows. Every address below belongs to this phone, and nothing here is
@@ -3850,3 +3851,4 @@ hakios_adreno_init(void)
 	}
 	printf("adreno: over; the system goes on starting\n");
 }
+#endif /* HAKIOS_ADRENO_A618 */

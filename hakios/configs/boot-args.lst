@@ -1,5 +1,6 @@
 adreno	k
 adreno_blind	k
+adreno_delay	k
 adreno_dirty	k
 adreno_fine	k
 adreno_keep	k
@@ -9,7 +10,11 @@ adreno_return	k
 adreno_skip	k
 adreno_speed	k
 adreno_stream1	k
+adreno_trust	k
 adreno_watch	k
+adreno_zap	k
+adreno_zap_fresh	k
+adreno_zap_meta	k
 adsp	k
 adsp_again	k
 adsp_apr_wait	k

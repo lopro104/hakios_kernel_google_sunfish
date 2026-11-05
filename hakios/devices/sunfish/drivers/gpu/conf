@@ -8,3 +8,9 @@ driver CMDBRIGHT
 	file    bsd/dev/hakios.cmdbright.c
 	file    iokit/Kernel/hakios.cmdbright.cpp iokitcpp
 	help    the panel's brightness, DCS 0x51 over DSI0, and the service iOS's slider finds (panel_brightness=4..1023)
+
+driver ADRENO_A618
+	file    bsd/dev/hakios.adreno_a618.c
+	file    bsd/dev/hakios.rpmh_sm7150.c
+	requires ADRENO
+	help    the Adreno 618 of the SM7150 woken step by step (adreno=N, gpu=1), in place of drivers/gpu/hakios.adreno.c, with RPMh votes

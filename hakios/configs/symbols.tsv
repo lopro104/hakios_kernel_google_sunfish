@@ -1,15 +1,20 @@
-ADRENO	arg	adreno	GPU and display	k	hakios.adreno.c	
+ADRENO	arg	adreno	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	steps 1..N (0 or absent: the GPU is left alone)
 ADRENO_BLIND	arg	adreno_blind	GPU and display	k	hakios.adreno.c	
+ADRENO_DELAY	arg	adreno_delay	User space	k	hakios.adreno_a618.c	start S seconds after the root is mounted (default 40), after the GUI
 ADRENO_DIRTY	arg	adreno_dirty	GPU and display	k	hakios.adreno.c	
-ADRENO_FINE	arg	adreno_fine	GPU and display	k	hakios.adreno.c	the newest step waits like that before every single access
-ADRENO_KEEP	arg	adreno_keep	GPU and display	k	hakios.adreno.c	
-ADRENO_ONLY	arg	adreno_only	GPU and display	k	hakios.adreno.c	step K alone (what steps 6 to 10 need, they check for themselves: within one session of the loader, power and clocks stay as an earlier run left them)
-ADRENO_PAUSE	arg	adreno_pause	GPU and display	k	hakios.adreno.c	how long the newest step waits after announcing a group of accesses (default 2200)
+ADRENO_FINE	arg	adreno_fine	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	the newest step waits like that before every single access
+ADRENO_KEEP	arg	adreno_keep	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	do not switch off again what the steps switched on; after all 21, the GPU stays on for the system (the service HakiosGPU: "the GPU kept on" below)
+ADRENO_ONLY	arg	adreno_only	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	step K alone (what steps 6 to 10 need, they check for themselves: within one session of the loader, power and clocks stay as an earlier run left them)
+ADRENO_PAUSE	arg	adreno_pause	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	how long the newest step waits after announcing a group of accesses (default 2200)
 ADRENO_RETURN	arg	adreno_return	GPU and display	k	hakios.adreno.c	when all is over, go back to the loader instead of starting the system
-ADRENO_SKIP	arg	adreno_skip	GPU and display	k	hakios.adreno.c	leave out the steps whose bits are set (bit 2 = step 2)
-ADRENO_SPEED	arg	adreno_speed	GPU and display	k	hakios.adreno.c	step 17 asks the GMU for the 3D core's Nth speed: 1 315 MHz, 2 450 MHz, 3 550 MHz (the default: the most this phone's GPU is rated for)
+ADRENO_SKIP	arg	adreno_skip	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	leave out the steps whose bits are set (bit 2 = step 2)
+ADRENO_SPEED	arg	adreno_speed	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	step 17 asks the GMU for the 3D core's Nth speed: 1 315 MHz, 2 450 MHz, 3 550 MHz (the default: the most this phone's GPU is rated for)
 ADRENO_STREAM1	arg	adreno_stream1	GPU and display	k	hakios.adreno.c	step 18 leaves the core's second stream out (0) or gives it an empty context of its own (2): what the SMMU then records shows what the core
+ADRENO_TRUST	arg	adreno_trust	User space	k	hakios.adreno_a618.c	with no zap shader, leave secure mode by writing RBBM_SECVID_TRUST_CNTL (linux a6xx_gpu.c hw_init does that when a device has no zap shader)
 ADRENO_WATCH	arg	adreno_watch	GPU and display	k	hakios.adreno.c	after the last step, say once a second for S seconds (default 20) that the machine is still alive, and what was written last
+ADRENO_ZAP	arg	adreno_zap	User space	k	hakios.adreno_a618.c	step 19 loads no zap shader (step 12 can be skipped too: adreno_skip=0x1800)
+ADRENO_ZAP_FRESH	arg	adreno_zap_fresh	User space	k	hakios.adreno_a618.c	
+ADRENO_ZAP_META	arg	adreno_zap_meta	User space	k	hakios.adreno_a618.c	the zap shader's header for PAS_INIT_IMAGE at that physical address instead of a page of the kernel's
 ADSP_AGAIN	arg	adsp_again	Audio and battery	k	hakios.adsp.c	
 ADSP_APR_WAIT	arg	adsp_apr_wait	Audio and battery	k	hakios.adsp.c	
 ADSP_KEEP	arg	adsp_keep	Audio and battery	k	hakios.adsp.c	
