@@ -226,6 +226,9 @@ DENY = ('watchdog', 'CommCenter', 'wifi', 'WiFi', 'bluetooth', 'BTServer', 'loca
 
 # ALLOW="word ..." in the environment lets jobs through that DENY would stop: for trying one out
 DENY = tuple(word for word in DENY if word not in os.environ.get('ALLOW', '').split())
+# DENY_MORE="word ..." takes more out, whether started by themselves or on demand: a phone with less memory to spare
+DENY_MORE = tuple(os.environ.get('DENY_MORE', '').split())
+DENY += DENY_MORE
 
 args = sys.argv[1:]
 rest = '--rest' in args
@@ -264,6 +267,7 @@ def present(program):
 
 angels = f'{src_root}/System/Library/LaunchAngels'
 os.makedirs(dest, exist_ok=True)
+labels = [label for label in labels if not any(word in label for word in DENY_MORE)]
 for label in labels:
     with open(f'{src}/{label}.plist', 'rb') as f:
         job = plistlib.load(f)
