@@ -30,6 +30,10 @@ AIR64 = 0x01000017
 
 def air64_slice(path):
     with open(path, 'rb') as f:
+        if f.read(4) == b'MTLB':        # an iOS image's library is one slice already
+            f.seek(0)
+            return f.read()
+        f.seek(0)
         magic, n = struct.unpack('>II', f.read(8))
         assert magic == 0xcafebabe, '%s: not a universal file' % path
         for _ in range(n):
