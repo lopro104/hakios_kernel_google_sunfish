@@ -18,3 +18,11 @@ userland/gpu/HakiosMetalCore.dylib
 userland/gpu/SweetMetal
 userland/gpu/hakios-metal-client
 userland/gpu/hakios-test
+
+# run logs and screenshots of the phone (they hold what the radio saw, the screen, network names), scratch copies of the
+# phone's own plists, stray patch rejects, build logs, and a built payload: never to be committed
+logs/
+scratch/
+*.rej
+tools/xnu-docker/build-*.log
+shim/payload
