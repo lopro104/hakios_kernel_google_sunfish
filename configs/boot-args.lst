@@ -284,6 +284,7 @@ systrace_name	k
 thermal	k
 thermal_log	k
 thermal_poll	k
+thermal_slow	k
 thermal_stop	k
 thermal_tm0	k
 thermal_tm1	k
