@@ -272,9 +272,19 @@ static TUNABLE(uint32_t, gBeam, "fb_beam", 1);
 #define PP_VSYNC_INIT_VAL       0x010
 #define PP_INT_COUNT_VAL        0x014
 
+static bool gBeamTearCheck;     /* the line is the pingpong's; else the interface's, as on the reference phone */
+
+/* Booted through U-Boot no pingpong does tear checks and the panel is still sent frames: then INTF_1, at this SoC's address */
+#define SM7150_INTF_PAGE        0x0ae68000UL            /* MDP 0x0ae01000 + 0x6a800 (Linux's dpu_5_2_sm7150.h) = 0xae6b800 */
+#define SM7150_INTF0_OFFSET     0x3000
+#define SM7150_INTF1_OFFSET     0x3800
+
 static uint32_t
 beamLine(vm_offset_t pp)
 {
+	if (!gBeamTearCheck) {
+		return *(volatile uint32_t *)(pp + INTF_LINE_COUNT);
+	}
 	uint32_t init = *(volatile uint32_t *)(pp + PP_VSYNC_INIT_VAL) & 0xffff;
 	uint32_t line = *(volatile uint32_t *)(pp + PP_INT_COUNT_VAL) & 0xffff;
 
@@ -962,6 +972,7 @@ IOMobileFramebuffer::beamProbe(void)
 
 			if (*(volatile uint32_t *)(pp + PP_TEAR_CHECK_EN) & 1) {
 				intf = pp;
+				gBeamTearCheck = true;
 				IOLog("MiniIOMobileFramebuffer: fb_beam: pingpong %u does tear checks: height %u, start value %u\n", n,
 				    *(volatile uint32_t *)(pp + PP_SYNC_CONFIG_HEIGHT) & 0xffff,
 				    *(volatile uint32_t *)(pp + PP_VSYNC_INIT_VAL) & 0xffff);
@@ -969,8 +980,16 @@ IOMobileFramebuffer::beamProbe(void)
 			}
 		}
 		if (intf == 0) {
-			IOLog("MiniIOMobileFramebuffer: fb_beam: no pingpong does tear checks: frames stay on their beat\n");
-			return;
+			vm_offset_t interfaces = ml_io_map(SM7150_INTF_PAGE, 0x4000);
+			uint32_t on0 = *(volatile uint32_t *)(interfaces + SM7150_INTF0_OFFSET + INTF_TIMING_ENGINE_EN);
+			uint32_t on1 = *(volatile uint32_t *)(interfaces + SM7150_INTF1_OFFSET + INTF_TIMING_ENGINE_EN);
+
+			IOLog("MiniIOMobileFramebuffer: fb_beam: no pingpong does tear checks; timing engines: INTF_0 %#x, INTF_1 %#x\n", on0, on1);
+			if (!(on1 & 1)) {
+				IOLog("MiniIOMobileFramebuffer: fb_beam: INTF_1's timing engine is off too: frames stay on their beat\n");
+				return;
+			}
+			intf = interfaces + SM7150_INTF1_OFFSET;
 		}
 		/* a second of looking: how far the line goes, and how long from one return to the top to another */
 		nanoseconds_to_absolutetime(NSEC_PER_SEC, &until);
