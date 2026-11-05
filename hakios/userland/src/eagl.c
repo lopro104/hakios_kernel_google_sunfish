@@ -249,7 +249,11 @@ struct eagl {
 	id object;                      /* the EAGLContext */
 	struct hakios_gl *gl;
 	unsigned long api;
-	struct image images[256];
+	/*
+	 * (256 was too few: Settings alone went past it, and the textures after that stayed incomplete, which draw as opaque
+	 * black, or a mask as a solid rectangle.)
+	 */
+	struct image images[2048];
 	unsigned image_count;
 	GLuint framebuffer;             /* the one bound */
 	GLuint colour;                  /* ... and the texture that is its colour attachment (0: none, or no texture) */
