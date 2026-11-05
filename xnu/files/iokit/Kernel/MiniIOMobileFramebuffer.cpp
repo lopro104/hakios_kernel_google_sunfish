@@ -257,6 +257,36 @@ static TUNABLE(uint32_t, gMeasure, "fb_measure", 0);
  * starts, with fb_measure's reads, and if it does not count as a line counter should, frames stay on their beat.
  */
 static TUNABLE(uint32_t, gBeam, "fb_beam", 1);
+
+#ifdef HAKIOS_CMDPANEL
+/*
+ * A command-mode panel (the Pixel 4a's) has no timing engine in INTF_1, and that address is another block on its SoC. What says
+ * where the panel's scan is, is the tear check of the pingpong block feeding it: Linux's dpu_hw_pp_get_line_count(). Autorefresh
+ * (devices/sunfish/drivers/gpu/hakios.cmdpanel.c) sends the memory on that block's pulses. Only read here.
+ */
+#define PP_PAGE                 0x0ae70000UL            /* MDP 0x0ae01000 + 0x70000 is pingpong 0 at 0xae71000, 0x800 apart */
+#define PP_FIRST                0x1000
+#define PP_STRIDE               0x800
+#define PP_TEAR_CHECK_EN        0x000
+#define PP_SYNC_CONFIG_HEIGHT   0x008
+#define PP_VSYNC_INIT_VAL       0x010
+#define PP_INT_COUNT_VAL        0x014
+
+static uint32_t
+beamLine(vm_offset_t pp)
+{
+	uint32_t init = *(volatile uint32_t *)(pp + PP_VSYNC_INIT_VAL) & 0xffff;
+	uint32_t line = *(volatile uint32_t *)(pp + PP_INT_COUNT_VAL) & 0xffff;
+
+	return line < init ? line + (0xffff - init) : line - init;
+}
+#else
+static uint32_t
+beamLine(vm_offset_t intf)
+{
+	return *(volatile uint32_t *)(intf + INTF_LINE_COUNT);
+}
+#endif
 extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 static inline uint32_t refreshHz(void);
 
@@ -920,6 +950,59 @@ IOMobileFramebuffer::beamProbe(void)
 	uint64_t began, ended, until;
 
 	IOSleep(60000);
+#ifdef HAKIOS_CMDPANEL
+	{
+		vm_offset_t page = ml_io_map(PP_PAGE, 0x4000);
+		uint32_t wraps = 0, previous = 0;
+		uint64_t now, wrapped = 0, firstWrap = 0, gap;
+
+		intf = 0;
+		for (uint32_t n = 0; n < 4; n++) {
+			vm_offset_t pp = page + PP_FIRST + PP_STRIDE * n;
+
+			if (*(volatile uint32_t *)(pp + PP_TEAR_CHECK_EN) & 1) {
+				intf = pp;
+				IOLog("MiniIOMobileFramebuffer: fb_beam: pingpong %u does tear checks: height %u, start value %u\n", n,
+				    *(volatile uint32_t *)(pp + PP_SYNC_CONFIG_HEIGHT) & 0xffff,
+				    *(volatile uint32_t *)(pp + PP_VSYNC_INIT_VAL) & 0xffff);
+				break;
+			}
+		}
+		if (intf == 0) {
+			IOLog("MiniIOMobileFramebuffer: fb_beam: no pingpong does tear checks: frames stay on their beat\n");
+			return;
+		}
+		/* a second of looking: how far the line goes, and how long from one return to the top to another */
+		nanoseconds_to_absolutetime(NSEC_PER_SEC, &until);
+		until += mach_absolute_time();
+		nanoseconds_to_absolutetime(2 * NSEC_PER_MSEC, &gap);
+		while ((now = mach_absolute_time()) < until) {
+			line = beamLine(intf);
+			lines = line > lines ? line : lines;
+			smallest = line < smallest ? line : smallest;
+			if (line + 100 < previous && now - wrapped > gap) {
+				if (wraps++ == 0) {
+					firstWrap = now;
+				}
+				wrapped = now;
+			}
+			previous = line;
+		}
+		if (wraps < 3 || lines < fPanelHeight / 2 || lines > fPanelHeight * 2 || smallest > fPanelHeight / 4) {
+			IOLog("MiniIOMobileFramebuffer: fb_beam: the tear check's line does not count as it should (%u returns to the top, "
+			    "lines %u to %u): frames stay on their beat\n", wraps, smallest, lines);
+			return;
+		}
+		fBeamLines = lines + 1;
+		fBeamPeriod = (wrapped - firstWrap) / (wraps - 1);
+		absolutetime_to_nanoseconds(fBeamPeriod, &began);
+		IOLog("MiniIOMobileFramebuffer: fb_beam: the panel's scan is %u lines, %llu us (the tear check, %u looks): frames are "
+		    "written behind it from now on\n", fBeamLines, began / NSEC_PER_USEC, wraps);
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		fBeamIntf = intf;
+		return;
+	}
+#endif
 	intf = ml_io_map(DPU_INTF1_PAGE, 0x4000) + DPU_INTF1_OFFSET;
 	if (!(*(volatile uint32_t *)(intf + INTF_TIMING_ENGINE_EN) & 1)) {
 		IOLog("MiniIOMobileFramebuffer: fb_beam: the interface's timing engine is off: frames stay on their beat\n");
@@ -966,7 +1049,7 @@ IOMobileFramebuffer::beamProbe(void)
 uint64_t
 IOMobileFramebuffer::beamNextScan(uint64_t now)
 {
-	uint32_t line = *(volatile uint32_t *)(fBeamIntf + INTF_LINE_COUNT);
+	uint32_t line = beamLine(fBeamIntf);
 	uint64_t scan = now - fBeamPeriod * (line < fBeamLines ? line : fBeamLines - 1) / fBeamLines + fBeamPeriod;
 	/*
 	 * The first share is written from its top down about as fast as the scan reads it, so it may begin just before the
