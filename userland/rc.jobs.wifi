@@ -1,0 +1,6 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# Wi-Fi on the Pixel 4a: what configd has in its dynamic store while somebody joins a network in Settings, at three
+# moments (the radio is up about 100 s after the kernel starts). Nothing that burns the processors, as rc.jobs does.
+/redwood/bin/net_test wait 330 store
+/redwood/bin/net_test wait 150 store
+/redwood/bin/net_test wait 150 store
