@@ -3,3 +3,8 @@
 driver CMDPANEL
 	file    bsd/dev/hakios.cmdpanel.c
 	help    the command-mode panel: keeps the frame going to it, by the pingpong's autorefresh (panel_autorefresh=1)
+
+driver CMDBRIGHT
+	file    bsd/dev/hakios.cmdbright.c
+	file    iokit/Kernel/hakios.cmdbright.cpp iokitcpp
+	help    the panel's brightness, DCS 0x51 over DSI0, and the service iOS's slider finds (panel_brightness=4..1023)
