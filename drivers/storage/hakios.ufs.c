@@ -893,6 +893,7 @@ ufs_strategy(buf_t bp)
 {
 	uint32_t part = (uint32_t)minor(buf_device(bp));
 	uint64_t offset, len, size;
+	caddr_t mapped;
 	int error;
 
 	if (ufs_is_data(buf_device(bp))) {
@@ -921,7 +922,11 @@ ufs_strategy(buf_t bp)
 	if (offset + len > size) {
 		len = size - offset;
 	}
-	error = ufs_read(part, offset, (uint8_t *)buf_dataptr(bp), len);
+	/* a file system's cluster reads hand over pages with no kernel address yet: buf_map() gives them one */
+	if ((error = buf_map(bp, &mapped)) == 0) {
+		error = ufs_read(part, offset, (uint8_t *)mapped, len);
+		buf_unmap(bp);
+	}
 	buf_setresid(bp, (uint32_t)(buf_count(bp) - (error ? 0 : len)));
 	if (error) {
 		buf_seterror(bp, error);

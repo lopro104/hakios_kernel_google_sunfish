@@ -1,5 +1,6 @@
 adreno	k
 adreno_blind	k
+adreno_delay	k
 adreno_dirty	k
 adreno_fine	k
 adreno_keep	k
@@ -9,7 +10,11 @@ adreno_return	k
 adreno_skip	k
 adreno_speed	k
 adreno_stream1	k
+adreno_trust	k
 adreno_watch	k
+adreno_zap	k
+adreno_zap_fresh	k
+adreno_zap_meta	k
 adsp	k
 adsp_again	k
 adsp_apr_wait	k
@@ -212,6 +217,9 @@ modem_wait	k
 modem_wda_off	k
 net_names	k
 net_trace	k
+panel_autorefresh	k
+panel_brightness	k
+pm6150_battery	k
 pmic	k
 pmic_list	k
 press_power	k
@@ -271,8 +279,10 @@ thermal_tm1	k
 torch	kl
 torch_max_s	k
 torch_secs	k
+touch_delay	k
 touch_flip	k
 touch_lat	ku
+touch_log	k
 touch_poll_us	k
 touch_rate	k
 touch_spi_hz	k
@@ -305,6 +315,7 @@ virtio_blk	k
 virtio_input	k
 virtio_net	k
 virtio_sound	k
+vtimer_intid	k
 wifi	k
 wifi_again	k
 wifi_ask	k

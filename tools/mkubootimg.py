@@ -50,6 +50,8 @@ def main():
     ap.add_argument('--env', help='an environment for U-Boot to take with the loader (name=value lines): what the image does')
     ap.add_argument('--install', action='store_true',
                     help='the image for a boot partition: with devices/DEVICE/u-boot/install.env (the menu: Android or HakiOS)')
+    ap.add_argument('--header-version', default='1', help='boot image header version (default: 1)')
+    ap.add_argument('--pagesize', default='2048', help='page size (default: 2048)')
     args = ap.parse_args()
 
     dev = os.path.join(ROOT, 'devices', args.device)
@@ -110,8 +112,12 @@ def main():
     # no container: one zero byte for ABL, which hakios load does not take, so U-Boot waits for the host instead
     open(ramdisk, 'wb').write(hkub or b'\0')
     try:
-        subprocess.check_call([sys.executable, mkbootimg, '--kernel', kernel, '--ramdisk', ramdisk,
-                               '--header_version', '1', '-o', out])
+        cmd = [sys.executable, mkbootimg, '--kernel', kernel, '--ramdisk', ramdisk,
+               '--header_version', str(args.header_version), '--pagesize', str(args.pagesize)]
+        if str(args.header_version) == '2':
+            cmd.extend(['--dtb', dtb])
+        cmd.extend(['-o', out])
+        subprocess.check_call(cmd)
     finally:
         os.unlink(kernel)
         os.unlink(ramdisk)

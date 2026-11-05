@@ -99,7 +99,13 @@ SET_BY = {
 
 def tracked(root):
     out = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True).stdout
-    return [p.decode() for p in out.split(b"\0") if p]
+    files = list([p.decode() for p in out.split(b"\0") if p])
+    # a device repository is a checkout of its own, kept out of this git: its drivers read arguments too
+    for d, _dirs, names in sorted(os.walk(os.path.join(root, "devices"))):
+        rel = os.path.relpath(d, root)
+        if os.sep + "drivers" in rel:
+            files += [f for f in (os.path.join(rel, n) for n in sorted(names)) if f not in files]
+    return files
 
 
 def scan(root, keep=None):
@@ -120,7 +126,7 @@ def scan(root, keep=None):
             text = "\n".join(l[1:] for l in text.splitlines() if l.startswith("+") and not l.startswith("+++"))
             base = "(patch)"
         # the kernel's side: where the drivers are kept (xnu/files/ until they moved to drivers/<subsystem>/) and the Linux layer
-        if f.startswith(("xnu/", "drivers/", "wifi/lx/src/")):
+        if f.startswith(("xnu/", "drivers/", "devices/", "wifi/lx/src/")):
             for m in KERNEL.finditer(text):
                 found[m.group(1)]["kernel"].add(base)
             for m in STRING.finditer(text):

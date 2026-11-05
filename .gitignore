@@ -116,10 +116,13 @@ __pycache__/
 # The SoC, device and UEFI repositories that tools/hakios-device.py sync clones into place (devices/manifest.conf) are their own:
 /socs/*
 !/socs/README.md
+!/socs/sm7150/
 /devices/*
 !/devices/manifest.conf
 !/devices/README.md
 !/devices/qemu/
+!/devices/sunfish/
+!/devices/sweet/
 
 # Android platform-tools for xl on a Mac (tools/macos-bin/README.md): not part of the repository
 /tools/macos-bin/platform-tools

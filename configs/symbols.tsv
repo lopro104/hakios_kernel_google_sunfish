@@ -1,15 +1,20 @@
-ADRENO	arg	adreno	GPU and display	k	hakios.adreno.c	
+ADRENO	arg	adreno	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	steps 1..N (0 or absent: the GPU is left alone)
 ADRENO_BLIND	arg	adreno_blind	GPU and display	k	hakios.adreno.c	
+ADRENO_DELAY	arg	adreno_delay	User space	k	hakios.adreno_a618.c	start S seconds after the root is mounted (default 40), after the GUI
 ADRENO_DIRTY	arg	adreno_dirty	GPU and display	k	hakios.adreno.c	
-ADRENO_FINE	arg	adreno_fine	GPU and display	k	hakios.adreno.c	the newest step waits like that before every single access
-ADRENO_KEEP	arg	adreno_keep	GPU and display	k	hakios.adreno.c	
-ADRENO_ONLY	arg	adreno_only	GPU and display	k	hakios.adreno.c	step K alone (what steps 6 to 10 need, they check for themselves: within one session of the loader, power and clocks stay as an earlier run left them)
-ADRENO_PAUSE	arg	adreno_pause	GPU and display	k	hakios.adreno.c	how long the newest step waits after announcing a group of accesses (default 2200)
+ADRENO_FINE	arg	adreno_fine	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	the newest step waits like that before every single access
+ADRENO_KEEP	arg	adreno_keep	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	do not switch off again what the steps switched on; after all 21, the GPU stays on for the system (the service HakiosGPU: "the GPU kept on" below)
+ADRENO_ONLY	arg	adreno_only	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	step K alone (what steps 6 to 10 need, they check for themselves: within one session of the loader, power and clocks stay as an earlier run left them)
+ADRENO_PAUSE	arg	adreno_pause	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	how long the newest step waits after announcing a group of accesses (default 2200)
 ADRENO_RETURN	arg	adreno_return	GPU and display	k	hakios.adreno.c	when all is over, go back to the loader instead of starting the system
-ADRENO_SKIP	arg	adreno_skip	GPU and display	k	hakios.adreno.c	leave out the steps whose bits are set (bit 2 = step 2)
-ADRENO_SPEED	arg	adreno_speed	GPU and display	k	hakios.adreno.c	step 17 asks the GMU for the 3D core's Nth speed: 1 315 MHz, 2 450 MHz, 3 550 MHz (the default: the most this phone's GPU is rated for)
+ADRENO_SKIP	arg	adreno_skip	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	leave out the steps whose bits are set (bit 2 = step 2)
+ADRENO_SPEED	arg	adreno_speed	GPU and display	k	hakios.adreno.c,hakios.adreno_a618.c	step 17 asks the GMU for the 3D core's Nth speed: 1 315 MHz, 2 450 MHz, 3 550 MHz (the default: the most this phone's GPU is rated for)
 ADRENO_STREAM1	arg	adreno_stream1	GPU and display	k	hakios.adreno.c	step 18 leaves the core's second stream out (0) or gives it an empty context of its own (2): what the SMMU then records shows what the core
+ADRENO_TRUST	arg	adreno_trust	User space	k	hakios.adreno_a618.c	with no zap shader, leave secure mode by writing RBBM_SECVID_TRUST_CNTL (linux a6xx_gpu.c hw_init does that when a device has no zap shader)
 ADRENO_WATCH	arg	adreno_watch	GPU and display	k	hakios.adreno.c	after the last step, say once a second for S seconds (default 20) that the machine is still alive, and what was written last
+ADRENO_ZAP	arg	adreno_zap	User space	k	hakios.adreno_a618.c	step 19 loads no zap shader (step 12 can be skipped too: adreno_skip=0x1800)
+ADRENO_ZAP_FRESH	arg	adreno_zap_fresh	User space	k	hakios.adreno_a618.c	
+ADRENO_ZAP_META	arg	adreno_zap_meta	User space	k	hakios.adreno_a618.c	the zap shader's header for PAS_INIT_IMAGE at that physical address instead of a page of the kernel's
 ADSP_AGAIN	arg	adsp_again	Audio and battery	k	hakios.adsp.c	
 ADSP_APR_WAIT	arg	adsp_apr_wait	Audio and battery	k	hakios.adsp.c	
 ADSP_KEEP	arg	adsp_keep	Audio and battery	k	hakios.adsp.c	
@@ -55,7 +60,7 @@ BATTERY	arg	battery	Audio and battery	kl	hakios.adsp.c,hakios.battery.c,loader.c
 BATTMGR	arg	battmgr	Audio and battery	k	hakios.adsp.c	every property once, for the log (which number is which on this phone's firmware)
 BT	arg	bt	User space	k	hakios.bt.c	
 BT_AGAIN	arg	bt_again	User space	k	hakios.bt.c	the second look this many seconds later (0: no second look; 30)
-BUTTONS	arg	buttons	Touch and buttons	k	hakios.buttons.c	
+BUTTONS	arg	buttons	Touch and buttons	k	hakios.buttons.c,hakios.pm6150_keys.c	
 BUTTONS_STEPS	arg	buttons_steps	Touch and buttons	k	hakios.buttons.c	
 CA_METALLIB	arg	ca_metallib	User space	u	inject.c	
 CA_PROF	arg	ca_prof	User space	u	HakiosMetalCA.m	
@@ -192,6 +197,9 @@ MODEM_SIM_SWITCH_OFF	arg	modem_sim_switch_off	Cellular	k	hakios.mpss.c
 MODEM_STEP	arg	modem_step	Cellular	k	hakios.mpss.c	the steps once the root is there, then back to the loader if modem_return=1 says so
 MODEM_WAIT	arg	modem_wait	Cellular	k	hakios.mpss.c	
 MODEM_WDA_OFF	arg	modem_wda_off	Cellular	k	hakios.mpss.c	
+PANEL_AUTOREFRESH	arg	panel_autorefresh	User space	k	hakios.cmdpanel.c	
+PANEL_BRIGHTNESS	arg	panel_brightness	User space	k	hakios.cmdbright.c	
+PM6150_BATTERY	arg	pm6150_battery	User space	k	hakios.pm6150_battery.c	
 PMIC_LIST	arg	pmic_list	Chip, thermal and PMIC	k	hakios.pmic.c	only the clock, not the inventory of every block
 PRESS_POWER	arg	press_power	Touch and buttons	k	hakios.buttons.c	a short press of the power key that many seconds after boot, and another ten seconds later, given to Darwin as the key's own are (hakios_touch_post):
 PRESS_POWER_MS	arg	press_power_ms	Touch and buttons	k	hakios.buttons.c	
@@ -244,8 +252,10 @@ THERMAL_TM1	arg	thermal_tm1	Chip, thermal and PMIC	k	hakios.thermal.c
 TORCH	arg	torch	Haptics and torch	kl	hakios.torch.c,loader.c	a look, reading only: the arbiter's channel for the module and who may write through it, the module's type, its registers, the PMIC's temperature
 TORCH_MAX_S	arg	torch_max_s	Haptics and torch	k	hakios.torch.c	
 TORCH_SECS	arg	torch_secs	Haptics and torch	k	hakios.torch.c	
+TOUCH_DELAY	arg	touch_delay	User space	k	hakios.ftm5.c	
 TOUCH_FLIP	arg	touch_flip	Touch and buttons	k	hakios.goodix.c	
 TOUCH_LAT	arg	touch_lat	GPU and display	ku	HakiosMetalCA.m,MiniIOMobileFramebuffer.cpp,eagl.c,hakios.goodix.c,hakios.gpu.cpp,hakios.input.c,inject.c,inject_sb.c	a line for every wait of a program's for the GPU that took a millisecond or more ("tl: f KIND US at US"), for telling apart what holds a frame up
+TOUCH_LOG	arg	touch_log	User space	k	hakios.ftm5.c	the first events as they came from the chip, and a line every 1000 polls
 TOUCH_POLL_US	arg	touch_poll_us	Touch and buttons	k	hakios.goodix.c	
 TOUCH_RATE	arg	touch_rate	Touch and buttons	k	hakios.goodix.c	the chip reports twice as often (Xiaomi's game mode; 240 otherwise)
 TOUCH_SPI_HZ	arg	touch_spi_hz	Touch and buttons	k	hakios.goodix.c	the bus at N Hz (Android's device tree gives the chip 5 MHz)
@@ -272,6 +282,7 @@ VBLUR	arg	vblur	GPU and display	u	eagl.c
 VIRTIO_BLK	arg	virtio_blk	Storage and APFS	k	hakios.virtio_blk.c	
 VIRTIO_INPUT	arg	virtio_input	Touch and buttons	k	hakios.virtio_input.c	
 VIRTIO_SOUND	arg	virtio_sound	Audio and battery	k	hakios.virtio_sound.c	
+VTIMER_INTID	arg	vtimer_intid	User space	k	gic_v3_irq.c	
 WIFI_AGAIN	arg	wifi_again	Wi-Fi	k	hakios.wifi.c	start the DSP although the one before it was shut down without having acknowledged a stop: THAT HAS RESET THE PHONE, twice of two
 WIFI_ASK	arg	wifi_ask	Wi-Fi	k	hakios.wifi.c	step 14 also asks that service a question (its capabilities) and writes down the beginning of an answer
 WIFI_BA	arg	wifi_ba	Wi-Fi	k	lx_80211.c	

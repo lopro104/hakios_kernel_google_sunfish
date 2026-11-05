@@ -54,6 +54,7 @@ tell(const char *format, ...)
 	}
 }
 
+#ifndef HAKIOS_CPUFREQ_OSM
 #define EPSS_PHYS               0x18591000UL    /* three groups ("domains") of 0x1000: small cores, big, biggest */
 #define EPSS_DOMAIN_SIZE        0x1000UL
 #define EPSS_DOMAINS            3
@@ -62,6 +63,11 @@ tell(const char *format, ...)
 #define EPSS_PERF_STATE         0x320           /* the row that is wanted */
 #define XO_KHZ                  19200
 #define ALTERNATE_KHZ           300000          /* source 0: a fixed 300 MHz */
+#else
+/* another SoC's registers, in its device's repository (devices/sunfish/drivers/power/hakios.cpufreq_osm.c) */
+extern void hakios_cpufreq_osm_raise(void);
+extern uint64_t hakios_cpufreq_osm_cmd_db(void);
+#endif
 
 /* How fast a simple loop runs, in thousands of iterations per millisecond. */
 static uint32_t
@@ -77,6 +83,7 @@ loop_speed(void)
 	return nanos ? (uint32_t)(2000000ULL * 1000 / nanos) : 0;
 }
 
+#ifndef HAKIOS_CPUFREQ_OSM
 /* The group of the core with that number in its MPIDR (the device tree's "reg": the number is the second field). */
 static uint32_t
 domain_of(uint32_t phys_id)
@@ -109,6 +116,7 @@ raise_domain(uint32_t domain, uint32_t cores)
 	tell("cpufreq: group %u (%u of our cores): row %u -> %u of the frequency table, %u MHz\n", domain, cores, was, top,
 	    top_khz / 1000);
 }
+#endif
 
 /*
  * Boot-arg membench=1: how fast this processor reads, writes and copies memory, in MB a second
@@ -306,7 +314,11 @@ load_start(void)
  * left, with what is needed to vote for bandwidth on them -- only read. (membench=2 says the cores
  * together get no more from memory than one alone: 12 GB/s; nobody here votes for more.)
  */
+#ifdef HAKIOS_CPUFREQ_OSM
+#define CMD_DB_PHYS             hakios_cpufreq_osm_cmd_db()
+#else
 #define CMD_DB_PHYS             0x80860000UL
+#endif
 #define CMD_DB_SIZE             0x20000UL
 #define CMD_DB_BCM              5               /* the kind of resource in a slave's id: bus clock managers */
 
@@ -332,6 +344,15 @@ struct cmd_db_bcm {                             /* a BCM's auxiliary data (Linux
 	uint8_t vcd, reserved;
 };
 
+/* The database, mapped; NULL when the firmware does not say where it is. */
+static const struct cmd_db_header *
+cmd_db_map(void)
+{
+	uint64_t pa = CMD_DB_PHYS;
+
+	return pa != 0 ? (const struct cmd_db_header *)ml_io_map_wcomb(pa, CMD_DB_SIZE) : NULL;
+}
+
 /* (the same condition as the cores' clocks: the addresses are this phone's) */
 static bool
 cpufreq_wanted(void)
@@ -345,9 +366,9 @@ static void
 ddr_look(void)
 {
 	/* (memory, not registers: mapped so that reads of any size and alignment are allowed) */
-	const struct cmd_db_header *db = (const struct cmd_db_header *)ml_io_map_wcomb(CMD_DB_PHYS, CMD_DB_SIZE);
+	const struct cmd_db_header *db = cmd_db_map();
 
-	if (db->magic[0] != 0xdb || db->magic[1] != 0x30 || db->magic[2] != 0x03 || db->magic[3] != 0x0c) {
+	if (db == NULL || db->magic[0] != 0xdb || db->magic[1] != 0x30 || db->magic[2] != 0x03 || db->magic[3] != 0x0c) {
 		tell("ddr: no command database\n");
 		return;
 	}
@@ -440,10 +461,10 @@ static bool ddr_voted;
 static uint32_t
 cmd_db_address(const char *name)
 {
-	const struct cmd_db_header *db = (const struct cmd_db_header *)ml_io_map_wcomb(CMD_DB_PHYS, CMD_DB_SIZE);
+	const struct cmd_db_header *db = cmd_db_map();
 	char id[8] = { 0 };
 
-	if (db->magic[0] != 0xdb || db->magic[1] != 0x30 || db->magic[2] != 0x03 || db->magic[3] != 0x0c) {
+	if (db == NULL || db->magic[0] != 0xdb || db->magic[1] != 0x30 || db->magic[2] != 0x03 || db->magic[3] != 0x0c) {
 		return 0;
 	}
 	strlcpy(id, name, sizeof(id));
@@ -559,8 +580,13 @@ hakios_ddr_quiesce(void)
 void
 hakios_cpufreq_init(void)
 {
+#ifndef HAKIOS_CPUFREQ_OSM
 	const ml_topology_info_t *topology = ml_get_topology_info();
-	uint32_t enabled = 0, membench = 0, cores[EPSS_DOMAINS] = { 0 }, before, here;
+#endif
+	uint32_t enabled = 0, membench = 0, before, here;
+#ifndef HAKIOS_CPUFREQ_OSM
+	uint32_t cores[EPSS_DOMAINS] = { 0 };
+#endif
 
 	load_start();
 	enabled = 2;
@@ -575,17 +601,23 @@ hakios_cpufreq_init(void)
 	if (!PE_parse_boot_argn("cpufreq", &enabled, sizeof(enabled)) || !enabled) {
 		return;
 	}
+#ifndef HAKIOS_CPUFREQ_OSM
 	for (unsigned int i = 0; i < topology->num_cpus; i++) {
 		cores[domain_of(topology->cpus[i].phys_id)]++;
 	}
+#endif
 	/* (whichever core this thread happens to be on, and stays on or not: it only goes to the log) */
 	here = (uint32_t)(__builtin_arm_rsr64("MPIDR_EL1") >> 8) & 0xff;
 	before = loop_speed();
+#ifdef HAKIOS_CPUFREQ_OSM
+	hakios_cpufreq_osm_raise();
+#else
 	for (uint32_t domain = 0; domain < EPSS_DOMAINS; domain++) {
 		if (cores[domain] != 0) {
 			raise_domain(domain, cores[domain]);
 		}
 	}
+#endif
 	printf("cpufreq: on core %u a loop ran at %u, now at %u\n", here, before, loop_speed());
 	/* membench has its own variable: when the boot-arg is absent, the cpufreq value (2 means on) must not start the benchmark */
 	PE_parse_boot_argn("membench", &membench, sizeof(membench));
