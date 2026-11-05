@@ -7,3 +7,6 @@ CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/hakios-sunfish-storage.env"
 # CONFIG_EFI_VARIABLE_FILE_STORE is not set
 CONFIG_EFI_VARIABLE_NO_STORE=y
 # CONFIG_FASTBOOT_FLASH is not set
+# the RAM above these is wanted in one piece by the kernel: U-Boot itself keeps about 180 MB, not about 750
+CONFIG_SYS_MALLOC_LEN=0x4000000
+CONFIG_FASTBOOT_BUF_SIZE=0x1000000

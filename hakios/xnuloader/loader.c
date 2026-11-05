@@ -2809,6 +2809,7 @@ choose_window(const struct payload_info *pi)
 			best_size = hi - lo;
 		}
 	}
+	print_memory_map();
 	print("largest free block %x size %x\n", best_base, best_size);
 	if (pi->forced_base != 0) {
 		best_base = pi->forced_base;
