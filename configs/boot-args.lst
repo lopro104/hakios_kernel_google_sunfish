@@ -226,6 +226,9 @@ modem_sim_switch_off	k
 modem_step	k
 modem_wait	k
 modem_wda_off	k
+mpss	k
+mpss_dump	k
+mpss_log	k
 net_names	k
 net_trace	k
 panel_autorefresh	k
@@ -363,4 +366,6 @@ wifi_step	k
 wifi_wait	k
 wifi_watch	k
 wifi_wide	k
+wlannoht	k
+wlanprobe	k
 xpcproxy_idversion	k

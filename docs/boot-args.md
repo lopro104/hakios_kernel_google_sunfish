@@ -2,7 +2,7 @@
 
 Made by `tools/boot-args.py --markdown`; CI fails if it is out of date with the source (`tools/boot-args.py --check`).
 
-Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **366 arguments**: 291 read by the kernel, 14 by the loader, 71 by user space (one is read in more than one place).
+Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **371 arguments**: 296 read by the kernel, 14 by the loader, 71 by user space (one is read in more than one place).
 
 This is a catalogue of what exists and who reads it, not a manual. What an argument means is in the head of the file that reads it. The stable switches have a symbol in the configuration (`tools/hakios-config.py help SYMBOL`, `docs/configs.md`); the rest are the knobs of bring-up (a driver's steps, pauses, traces, test modes) and can change with the driver. Any of them can be given in a configuration with `CONFIG_BOOTARGS="name=value ..."`, which checks that each name is in this list. What the arguments of the two Metal paths do: [Metal on the Adreno](reference/metal.md#boot-arguments).
 
@@ -397,7 +397,7 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `ufs` | L | `loader.c` | `CONFIG_UFS` |  |
 | `ufs_probe` | L | `loader.c` | `CONFIG_UFS_PROBE` |  |
 
-## User space (52)
+## User space (57)
 
 | Argument | Layer | Read by | Configuration | Set by |
 |---|---|---|---|---|
@@ -437,6 +437,9 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `metal_skip` | U | `HakiosMetalCA.m` | `CONFIG_METAL_SKIP` |  |
 | `metal_trace` | U | `HakiosMetalCA.m` | `CONFIG_METAL_TRACE` |  |
 | `metal_watch` | U | `inject.c` | `CONFIG_METAL_WATCH` |  |
+| `mpss` | K | `hakios.mpss_sm7150.c` | `CONFIG_MPSS` |  |
+| `mpss_dump` | K | `hakios.mpss_sm7150.c` | `CONFIG_MPSS_DUMP` |  |
+| `mpss_log` | K | `hakios.mpss_sm7150.c` | `CONFIG_MPSS_LOG` |  |
 | `panel_autorefresh` | K | `hakios.cmdpanel.c` | `CONFIG_PANEL_AUTOREFRESH` |  |
 | `panel_brightness` | K | `hakios.cmdbright.c` | `CONFIG_PANEL_BRIGHTNESS` |  |
 | `pm6150_battery` | K | `hakios.pm6150_battery.c` | `CONFIG_PM6150_BATTERY` |  |
@@ -453,3 +456,5 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `vtimer_intid` | K | `gic_v3_irq.c` | `CONFIG_VTIMER_INTID` |  |
 | `wallpaper_cache` | U | `inject_sb.c` | `CONFIG_WALLPAPER_CACHE` |  |
 | `wallpaper_freeze` | U | `inject_sb.c` | `CONFIG_WALLPAPER_FREEZE` |  |
+| `wlannoht` | K | `hakios.mpss_sm7150.c` | `CONFIG_WLANNOHT` |  |
+| `wlanprobe` | K | `hakios.mpss_sm7150.c` | `CONFIG_WLANPROBE` |  |
