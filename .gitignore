@@ -121,7 +121,6 @@ __pycache__/
 !/devices/manifest.conf
 !/devices/README.md
 !/devices/qemu/
-!/devices/sunfish/
 !/devices/sweet/
 
 # Android platform-tools for xl on a Mac (tools/macos-bin/README.md): not part of the repository
