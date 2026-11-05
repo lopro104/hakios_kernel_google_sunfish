@@ -12,8 +12,8 @@
   - GL layer: more than 256 IOSurface textures broke icons and labels (eagl.c images[], now 2048).
   - Wi-Fi: the radio's firmware runs on the modem; the driver needs a 16 MB contiguous block taken at 2 s into the boot, and its thread must start from a thread call, not at STARTUP_RANK_LAST. Never write modemst1/2, fsg or persist (RAM copies are served).
   - Run logs hold neighbours' network names and the home router's identifiers: mask them in anything pasted or committed.
-- THE 16.7 ROOT in userdata is untouched (HFSX header intact). Booting it read-only reached the Apple logo and stopped: SpringBoard waits for mobileactivationd. HakiOS's 16.5 userland replaces that wait, which is why we moved to 16.5.
-- OPEN DECISIONS (the user's): final target 16.5 or 16.7; root on storage (frees ~2.4 GB, removes the upload and the password re-entry, but writes to the phone; needs a decision about userdata, the 16.7 root and EvolutionX); the name of the published device repo (hakios-sm7150?).
+- DECIDED (user, 2026-11-05): the target is iOS 16.5; 16.7 is dropped. The old 16.7 root in userdata (untouched so far) needs no backup and may be wiped. For the record, booting it read-only stopped at the Apple logo: SpringBoard waits for mobileactivationd, which HakiOS's 16.5 userland avoids.
+- OPEN DECISIONS (the user's): root on storage (frees ~2.4 GB, removes the upload and the password re-entry; userdata is free to use now, but EvolutionX shares it and the user flashes Android there monthly); the name of the published device repo (hakios-sm7150?).
 - PLAN, in order, the order may change: Wi-Fi password kept across boots; battery unplug test; label shadows; sound, Bluetooth, vibration; flashlight, sensors, cameras; root on storage and boot without a PC; cellular; privacy scan, licences, publish the device repo, send general fixes upstream (the texture table); LAST a 30-minute stability run.
 
 ## 2026-11-04 ~03:55 SENSORS & AUTO-ROTATION OPERATIONAL, POLISHING COMPLETED
