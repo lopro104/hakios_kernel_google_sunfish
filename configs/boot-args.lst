@@ -94,6 +94,7 @@ ddr_rest	k
 ddr_vote	k
 display_probe	k
 epoch	k
+fb_beam	k
 fb_beat	k
 fb_ca_hz	k
 fb_diff	k
@@ -105,6 +106,7 @@ fb_queue	k
 fb_threads	k
 fbheight	k
 fbscale	k
+fbsubtype	k
 fbtrace	k
 fbwidth	k
 gamut	l
@@ -152,17 +154,26 @@ gpu_log	k
 hakios_kver	k
 haptic	k
 haptic_effect	k
+hfsroot_launchd	u
+hfsroot_out	u
+hfsroot_top	u
+hfsroot_wait	u
 hv_wdt_pet	k
+iowatchdog	k
 loader_return_after	kl
+m2v_utrace	u
 machine_name	k
 membench	k
 metal	ku
 metal_all	u
+metal_defer	u
 metal_dump	u
 metal_fps	u
 metal_gmem	u
 metal_gmem_draws	u
 metal_gmem_off	u
+metal_luma_boost	u
+metal_m2v	u
 metal_skip	u
 metal_trace	u
 metal_watch	u
@@ -287,6 +298,7 @@ touch_poll_us	k
 touch_rate	k
 touch_spi_hz	k
 touchscreen	k
+tu_debug	u
 ufs	l
 ufs_bench	k
 ufs_check	k
@@ -301,6 +313,7 @@ ufs_native_spin	k
 ufs_probe	l
 ufs_shared_pa	k
 ufs_write	kl
+ui_lite	u
 ustacks	k
 ustacks_at	k
 ustacks_count	k
@@ -316,6 +329,8 @@ virtio_input	k
 virtio_net	k
 virtio_sound	k
 vtimer_intid	k
+wallpaper_cache	u
+wallpaper_freeze	u
 wifi	k
 wifi_again	k
 wifi_ask	k
