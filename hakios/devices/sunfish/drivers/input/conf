@@ -3,3 +3,7 @@
 driver FTM5
 	file    bsd/dev/hakios.ftm5.c
 	help    the touch screen: an ST FTM5 at I2C 0x49 on serial engine 7 (touchscreen=1; touch_delay=N, default 45 s)
+
+driver PM6150_KEYS
+	file    bsd/dev/hakios.pm6150_keys.c
+	help    power and volume down on the PM6150, volume up on the PM6150L, read only; for this phone in place of BUTTONS (buttons=1)
