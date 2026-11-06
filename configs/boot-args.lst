@@ -100,6 +100,7 @@ fb_ca_hz	k
 fb_diff	k
 fb_filter	k
 fb_hz	k
+fb_intf	k
 fb_measure	k
 fb_pri	k
 fb_queue	k
@@ -108,7 +109,7 @@ fbheight	k
 fbscale	k
 fbsubtype	k
 fbtrace	k
-fbwidth	k
+fbwidth	ku
 gamut	l
 gl	u
 glblit	u
@@ -366,6 +367,7 @@ wifi_step	k
 wifi_wait	k
 wifi_watch	k
 wifi_wide	k
+wlan_kdhcp	k
 wlannoht	k
 wlanprobe	k
 xpcproxy_idversion	k
