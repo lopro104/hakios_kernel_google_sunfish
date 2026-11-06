@@ -3622,11 +3622,72 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 /*   fastboot getvar result        blocks until the kernel is back          */
 /*   fastboot get_staged log.txt   fetch loader + kernel log                */
 /*   fastboot oem hang             stop petting the watchdog (test)         */
-/*   fastboot reboot               cold reset                               */
+/*   fastboot reboot               cold reset, into the bootloader (see below) */
 
 #define USB_EP_OUT   0x01
 #define USB_EP_IN    0x81
 #define USB_CHUNK    (1024 * 1024)
+
+/*
+ * Reset into the bootloader instead of trying Android (the stock kernel's `reboot bootloader`): the PM6150's power-on block
+ * keeps the reason in SOFT_RB_SPARE (SPMI slave 0, 0x88F; reason 2 shifted left by one) and the restart-reason cookie sits in
+ * IMEM. The PMIC arbiter (version 5) takes the write on the channel of the APID that maps that peripheral and that this
+ * execution environment (0) owns. Written as the downstream drivers/spmi/spmi-pmic-arb.c does it.
+ */
+#define ARB_CORE_PA      0x0c440000ULL
+#define ARB_CNFG_PA      0x0c40a000ULL
+#define ARB_CHNLS_PA     0x0c600000ULL
+#define IMEM_RESTART_REASON_PA   0x146aa65cULL
+
+static int
+pmic_write8(uint8_t sid, uint16_t addr, uint8_t value)
+{
+	uint32_t ppid = ((uint32_t)sid << 8) | (addr >> 8);
+	int apid = -1;
+
+	for (uint32_t i = 0; 0x900 + 4 * i < 0x1100; i++) {
+		uint32_t map = *(volatile uint32_t *)(uintptr_t)(ARB_CORE_PA + 0x900 + 4 * i);
+
+		if (map != 0 && ((map >> 8) & 0xfff) == ppid &&
+		    (*(volatile uint32_t *)(uintptr_t)(ARB_CNFG_PA + 0x700 + 4 * i) & 7) == 0) {
+			apid = (int)i;      /* the last one that fits, as the driver picks */
+		}
+	}
+	if (apid < 0) {
+		print("bootloader reset: no APID for PPID %x that this environment may write\n", ppid);
+		return -1;
+	}
+
+	volatile uint32_t *ch = (volatile uint32_t *)(uintptr_t)(ARB_CHNLS_PA + 0x10000ULL * (uint32_t)apid);
+
+	ch[0x10 / 4] = value;
+	ch[0] = (0u << 27 /* EXT_WRITEL */) | ((uint32_t)(addr & 0xff) << 4) | 0 /* one byte */;
+	for (uint32_t n = 0; n < 100000; n++) {
+		uint32_t status = ch[0x08 / 4];
+
+		if (status & 1) {
+			if (status & 0xe) {
+				print("bootloader reset: the arbiter refused the write (status %x)\n", status);
+				return -1;
+			}
+			return 0;
+		}
+		BS->stall(1);
+	}
+	print("bootloader reset: the arbiter did not finish\n");
+	return -1;
+}
+
+static void
+reset_to_bootloader(void)
+{
+	int rc = pmic_write8(0, 0x88f, 2 << 1);
+
+	*(volatile uint32_t *)(uintptr_t)IMEM_RESTART_REASON_PA = 0x77665500;
+	print("bootloader reset: PMIC reason %s\n", rc == 0 ? "written" : "NOT written");
+	BS->stall(200000);
+	ST->rt->reset_system(0 /* EfiResetCold */, 0, 0, NULL);
+}
 
 static usb_device_protocol *USB;
 static int download_to_ramdisk;     /* set by "oem ramdisk" for the one download that follows */
@@ -4012,8 +4073,7 @@ fb_command(char *cmd)
 			fb_reply("OKAY", "");
 		} else if (starts_with(cmd, "reboot") || starts_with(cmd, "oem reboot")) {
 			fb_reply("OKAY", "");
-			BS->stall(200000);
-			ST->rt->reset_system(0 /* EfiResetCold */, 0, 0, NULL);
+			reset_to_bootloader();
 		} else {
 			fb_reply("FAIL", "unknown command");
 		}
