@@ -23,6 +23,7 @@
 #include <arm64/psci_smp.h>
 #include <arm64/proc_reg.h>
 #include <pexpert/pexpert.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <pexpert/arm64/board_config.h>
 #include <vm/vm_page.h>
 #include <vm/vm_compressor.h>
@@ -360,6 +361,33 @@ loader_log_append_msgbuf(void)
 	}
 }
 
+/*
+ * What the machine was asked to do when Darwin shut down (halt_all_cpus -> PEHaltRestart): 1 = power off, 2 = restart, 0 = nothing
+ * asked (a timed return, a panic). It goes to the loader with the return as its "code"; a loader that runs the kernel from a boot
+ * partition with no host powers the phone off for 1 and resets it for 2. No platform driver does either, so the hook returns -1
+ * and halt_all_cpus() goes on to hand the machine back to the loader as before.
+ */
+static uint64_t hakios_halt_kind;
+
+static int
+hakios_halt_note(unsigned int type)
+{
+	if (type == kPEHaltCPU) {
+		hakios_halt_kind = 1;
+	} else if (type == kPERestartCPU) {
+		hakios_halt_kind = 2;
+	}
+	return -1;
+}
+
+__startup_func
+static void
+hakios_halt_note_init(void)
+{
+	PE_halt_restart = hakios_halt_note;
+}
+STARTUP(EARLY_BOOT, STARTUP_RANK_LAST, hakios_halt_note_init);
+
 void
 loader_return(void)
 {
@@ -397,7 +425,7 @@ loader_return(void)
 			loader_log_putc(*c);
 		}
 	}
-	loader_jump(0, 0);
+	loader_jump(0, hakios_halt_kind);
 }
 
 /* Bring-up aid: stop here if the loader asked for checkpoint n. */

@@ -614,6 +614,20 @@ reboot(void)
 	}
 }
 
+static int64_t psci_call(uint64_t function, uint64_t a1, uint64_t a2, uint64_t a3);
+
+/*
+ * Switch the phone off (PSCI SYSTEM_OFF, which Qualcomm's TrustZone does through the PMIC). Returns only if the firmware cannot,
+ * and the caller then resets instead.
+ */
+static void
+power_off(void)
+{
+	hc_take_back("before the power off");
+	flush_log();
+	(void)psci_call(0x84000008u /* PSCI SYSTEM_OFF */, 0, 0, 0);
+}
+
 /*
  * Return-from-kernel support.
  *
@@ -2837,6 +2851,8 @@ choose_window(const struct payload_info *pi)
  */
 static int starts_with(const char *s, const char *prefix);
 
+static int standalone_boot;     /* the payload came with the boot image and has no USB host to hand a log to */
+
 static int
 run_kernel(int have_checkpoint, uint64_t checkpoint)
 {
@@ -3608,6 +3624,10 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 		} else {
 			set_result("returned", klog_len, 0);
 		}
+	}
+	if (standalone_boot && reason == 0 && (loader_ctx[CTX_ESR] == 1 || loader_ctx[CTX_ESR] == 2)) {
+		/* Darwin shut down or restarted on a boot with no host: nothing to write, and the log is not worth a screenful */
+		return 1;
 	}
 	write_logs(klog, klog_len);
 	return 1;
@@ -4441,7 +4461,12 @@ efi_main(efi_handle image, efi_system_table *st)
 
 	/* One-shot mode: run the kernel that came with the image, then reset. */
 	if (have_payload) {
+		standalone_boot = !pi.usb_mode;
 		run_kernel(0, 0);
+		/* Darwin asked to shut down (the kernel's code 1; 2 is a restart: the reset below): the phone goes off */
+		if (loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 1) {
+			power_off();
+		}
 	}
 	reboot();
 	return 0;
