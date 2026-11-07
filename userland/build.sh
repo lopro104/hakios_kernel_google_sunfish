@@ -208,6 +208,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			{ ${LDID:-ldid} -Ssrc/record_test.entitlements obj/record_test 2>/dev/null ||
 			  echo "build.sh: no ldid: record_test is unsigned, and the system may not let it record"; }
 		$DYN -o obj/cpu_test src/cpu_test.c
+		$DYN -o obj/halt_test src/halt_test.c
 		# which processes take the processors, every few seconds (src/cputop.c; rc.jobs.cputop)
 		$DYN -o obj/cputop src/cputop.c
 		$DYN -framework CoreFoundation -framework IOSurface -o obj/cow_test src/cow_test.c
@@ -347,6 +348,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	fi
 	cp obj/hello_dyn obj/svc_test obj/surf_test obj/rwtouch obj/mg_test root/bin/
 	[ -f obj/cpu_test ] && cp obj/cpu_test root/bin/        # (a prebuilt/ from before this program has none)
+	[ -f obj/halt_test ] && cp obj/halt_test root/bin/
 	[ -f obj/cputop ] && cp obj/cputop root/bin/
 	[ -f obj/cow_test ] && cp obj/cow_test root/bin/
 	[ -f obj/cg_test ] && cp obj/cg_test root/bin/

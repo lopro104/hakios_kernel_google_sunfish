@@ -202,6 +202,9 @@ flash_root(const char *dev)
 	if (stat("/fw", &fw_st) == 0) {
 		/* the audio DSP's firmware and the speakers' configuration, from the RAM image as in a RAM boot */
 		check(synthetic_dir("/flash/fw") && bind_dir("/fw", "/flash/fw"), "the firmware on /fw (adsp=1, sound=N)");
+	} else {
+		/* no /fw in this image: an empty one, for the firmware container of the flash to be mounted on */
+		synthetic_dir("/flash/fw");
 	}
 	if (stat("/jb-bin", &fw_st) == 0) {
 		/*
@@ -266,6 +269,17 @@ flash_root(const char *dev)
 	 */
 	mount_cryptex("OS", ",c=1", devpath);
 	mount_cryptex("App", ",c=2", devpath);
+	/*
+	 * The Pixel 4a's modem and Wi-Fi firmware (/fw/modem, rmtfs, tftp, wlan: tens of MB, which neither the resident image
+	 * nor a system image carries in a flash boot): the third container of darwin, after the cryptexes, over /fw. Where
+	 * the partition has none, /fw stays the resident image's.
+	 */
+	strcpy(from, join(devpath, ",c=3", ""));
+	if (mount("apfs", "/fw", MNT_RDONLY, (void *)from) == 0) {
+		check(1, "the modem and Wi-Fi firmware (container 3 of darwin) on /fw");
+	} else {
+		printf("  no firmware container on the flash (%s): %s\n", from, strerror(errno));
+	}
 	check(bind_dir("/private/preboot/redwood", "/redwood"), "this image back on /redwood");
 	flash_root_mode = 1;
 }
