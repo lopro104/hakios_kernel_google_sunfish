@@ -447,7 +447,8 @@ repair_preferences(void)
 
 	/* wait for the migration: seen running, then gone (or 200 s: it may have been before we looked) */
 	while (seconds() - start < 200) {
-		bool running = find_process("datamigrator") != 0;
+		/* (its program is the XPC service com.apple.datamigrator: the kernel keeps 16 characters of the name) */
+		bool running = find_process("com.apple.datami") != 0;
 
 		if (running) {
 			seen = true;
