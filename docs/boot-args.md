@@ -2,7 +2,7 @@
 
 Made by `tools/boot-args.py --markdown`; CI fails if it is out of date with the source (`tools/boot-args.py --check`).
 
-Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **373 arguments**: 298 read by the kernel, 14 by the loader, 72 by user space (one is read in more than one place).
+Every argument that the kernel, the loader or user space of this port reads, and which file reads it. **375 arguments**: 300 read by the kernel, 14 by the loader, 72 by user space (one is read in more than one place).
 
 This is a catalogue of what exists and who reads it, not a manual. What an argument means is in the head of the file that reads it. The stable switches have a symbol in the configuration (`tools/hakios-config.py help SYMBOL`, `docs/configs.md`); the rest are the knobs of bring-up (a driver's steps, pauses, traces, test modes) and can change with the driver. Any of them can be given in a configuration with `CONFIG_BOOTARGS="name=value ..."`, which checks that each name is in this list. What the arguments of the two Metal paths do: [Metal on the Adreno](reference/metal.md#boot-arguments).
 
@@ -322,7 +322,7 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 
 | Argument | Layer | Read by | Configuration | Set by |
 |---|---|---|---|---|
-| `haptic` | K | `hakios.haptic.c` | `CONFIG_HAPTIC` |  |
+| `haptic` | K | `hakios.haptic.c`, `hakios.haptic_drv2624.c` | `CONFIG_HAPTIC` |  |
 | `haptic_effect` | K | `hakios.haptic.c` | `CONFIG_HAPTIC_EFFECT` |  |
 | `torch` | KL | `hakios.torch.c`, `loader.c` | `CONFIG_TORCH` |  |
 | `torch_max_s` | K | `hakios.torch.c` | `CONFIG_TORCH_MAX_S` |  |
@@ -393,7 +393,7 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `ufs` | L | `loader.c` | `CONFIG_UFS` |  |
 | `ufs_probe` | L | `loader.c` | `CONFIG_UFS_PROBE` |  |
 
-## User space (58)
+## User space (60)
 
 | Argument | Layer | Read by | Configuration | Set by |
 |---|---|---|---|---|
@@ -415,6 +415,8 @@ Layers: **K** the kernel, **L** the loader, **U** user space (through `sysctl ke
 | `glno` | U | `inject.c` | `CONFIG_GLNO` |  |
 | `glsb3` | U | `inject.c` | `CONFIG_GLSB3` |  |
 | `glyes` | U | `inject.c` | `CONFIG_GLYES` |  |
+| `haptic_i2c` | K | `hakios.haptic_drv2624.c` | `CONFIG_HAPTIC_I2C` |  |
+| `haptic_ms` | K | `hakios.haptic_drv2624.c` | `CONFIG_HAPTIC_MS` |  |
 | `hfsroot_launchd` | U | `hfsroot.c` | `CONFIG_HFSROOT_LAUNCHD` |  |
 | `hfsroot_out` | U | `hfsroot.c` | `CONFIG_HFSROOT_OUT` |  |
 | `hfsroot_top` | U | `hfsroot.c` | `CONFIG_HFSROOT_TOP` |  |

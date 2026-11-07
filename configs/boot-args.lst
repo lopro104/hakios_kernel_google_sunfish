@@ -155,6 +155,8 @@ gpu_log	k
 hakios_kver	k
 haptic	k
 haptic_effect	k
+haptic_i2c	k
+haptic_ms	k
 hfsroot_launchd	u
 hfsroot_out	u
 hfsroot_top	u
