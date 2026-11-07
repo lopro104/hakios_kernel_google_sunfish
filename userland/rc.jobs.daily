@@ -1,0 +1,4 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# The everyday list: nothing that burns the processors, no test pages and no sounds. At the end of the boot it only
+# writes the kernel's memory figures to the results file.
+/redwood/bin/vol_ls sysctl kern.hakios_memory >> /private/var/results
