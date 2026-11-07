@@ -420,6 +420,9 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 		-e "s|^l\t/var/db/timezone/zoneinfo/[^\t]*\t/private/var/db/timezone/localtime\$|l\t/var/db/timezone/zoneinfo/$zone\t/private/var/db/timezone/localtime|" root/etc/var.skel
 	rm -f root/etc/var.skel.bak
 	# ... and the files of ours it puts there (var/): those under mobile/ belong to the user mobile
+	# the directories of the network configuration (var/preferences/SystemConfiguration/preferences.plist is one of the files below)
+	printf 'd\t755\t0\t0\t/private/var/preferences\n' >> root/etc/var.skel
+	printf 'd\t755\t0\t0\t/private/var/preferences/SystemConfiguration\n' >> root/etc/var.skel
 	cp -r var root/var
 	(cd var && find . -type f | sed 's|^\./||' | sort) | while read -r f; do
 		case $f in mobile/*) owner=501 ;; *) owner=0 ;; esac

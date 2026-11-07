@@ -1,0 +1,8 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# Wi-Fi on the Pixel 4a, flash-root boot: does configd have a network service for en0? What is in /private/var/preferences/SystemConfiguration
+# (NetworkInterfaces.plist is made from the IOKit interface, preferences.plist holds the services), and what the store says, 150 s after the job starts.
+/redwood/bin/net_test wait 270 store
+/redwood/bin/vol_ls ls /private/var/preferences /private/var/preferences/SystemConfiguration
+/redwood/bin/vol_ls cat /private/var/preferences/SystemConfiguration/NetworkInterfaces.plist 6000
+/redwood/bin/vol_ls cat /private/var/preferences/SystemConfiguration/preferences.plist 12000
+/redwood/bin/net_test wait 30

@@ -56,6 +56,7 @@
 #include <net/if_dl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -378,6 +379,116 @@ reach(const char *name)
  * makes has none (Settings then shows a spinner where the tick belongs). Only a kernel without
  * those IOKit objects gets the call.
  */
+/* does configd have a network service whose interface is en0? */
+static bool
+configd_has_service_for_en0(void)
+{
+	SCDynamicStoreRef session = SCDynamicStoreCreate(NULL, CFSTR("net_test"), NULL, NULL);
+	NSArray *keys = session ? CFBridgingRelease(SCDynamicStoreCopyKeyList(session, CFSTR("Setup:/Network/Service/[^/]+/Interface"))) : nil;
+	bool found = false;
+
+	for (NSString *key in keys) {
+		NSDictionary *interface = CFBridgingRelease(SCDynamicStoreCopyValue(session, (__bridge CFStringRef)key));
+
+		found |= [interface isKindOfClass:NSDictionary.class] && [interface[@"DeviceName"] isEqual:@"en0"];
+	}
+	if (session != NULL) {
+		CFRelease(session);
+	}
+	return found;
+}
+
+/* the pid of the process whose name (the kernel's p_comm, 16 characters at most) is NAME, 0 if there is none */
+static pid_t
+find_process(const char *name)
+{
+	int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
+	size_t size = 0;
+	struct kinfo_proc *list;
+	pid_t found = 0;
+
+	if (sysctl(mib, 3, NULL, &size, NULL, 0) != 0 || size == 0) {
+		return 0;
+	}
+	size += 32 * sizeof(struct kinfo_proc);
+	if ((list = malloc(size)) == NULL) {
+		return 0;
+	}
+	if (sysctl(mib, 3, list, &size, NULL, 0) == 0) {
+		for (size_t i = 0; i < size / sizeof(struct kinfo_proc); i++) {
+			if (strncmp(list[i].kp_proc.p_comm, name, 16) == 0) {
+				found = list[i].kp_proc.p_pid;
+			}
+		}
+	}
+	free(list);
+	return found;
+}
+
+/*
+ * Darwin's first-boot data migration (datamigrator, about 90 s) rewrites /private/var/preferences/SystemConfiguration/preferences.plist
+ * as an empty configuration, because /private/var is made new in memory at every boot, and configd then has no network service for
+ * en0. So, once the migration is over: put the configuration we ship (a Wi-Fi service on en0 with DHCP, var/preferences/..., which
+ * init has also put there first) back in its place, and have configd read it by letting it start again (launchd starts it when anyone
+ * asks for one of its services). Returns whether configd has the service afterwards.
+ */
+static bool
+repair_preferences(void)
+{
+	static const char shipped[] = "/redwood/var/preferences/SystemConfiguration/preferences.plist";
+	static const char live[] = "/private/var/preferences/SystemConfiguration/preferences.plist";
+	static const char staged[] = "/private/var/preferences/SystemConfiguration/preferences.plist.hakios";
+	double start = seconds();
+	bool seen = false;
+	FILE *in, *out;
+	char buffer[8192];
+	size_t n;
+	pid_t configd;
+
+	/* wait for the migration: seen running, then gone (or 200 s: it may have been before we looked) */
+	while (seconds() - start < 200) {
+		bool running = find_process("datamigrator") != 0;
+
+		if (running) {
+			seen = true;
+		} else if (seen || seconds() - start > 150) {
+			break;
+		}
+		sleep(2);
+	}
+	printf("net_test: wifi: the data migration is %s after %.0f s\n", seen ? "over" : "not seen", seconds() - start);
+	sleep(3);
+	if ((in = fopen(shipped, "r")) == NULL) {
+		printf("net_test: wifi: no %s: %s\n", shipped, strerror(errno));
+		return false;
+	}
+	if ((out = fopen(staged, "w")) == NULL) {
+		printf("net_test: wifi: cannot write %s: %s\n", staged, strerror(errno));
+		fclose(in);
+		return false;
+	}
+	while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
+		fwrite(buffer, 1, n, out);
+	}
+	fclose(in);
+	if (fclose(out) != 0 || rename(staged, live) != 0) {
+		printf("net_test: wifi: cannot put the configuration in place: %s\n", strerror(errno));
+		return false;
+	}
+	configd = find_process("configd");
+	printf("net_test: wifi: the configuration is back in place; configd (pid %d) is asked to start again\n", (int)configd);
+	if (configd > 0) {
+		kill(configd, SIGTERM);
+	}
+	for (double waited = seconds(); seconds() - waited < 45;) {
+		sleep(1);
+		if (configd_has_service_for_en0()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void
 wifi(void)
 {
@@ -403,29 +514,19 @@ wifi(void)
 		return;
 	}
 	printf("net_test: wifi: en0 is there after %.1f s\n", seconds() - start);
-	for (;;) {
-		SCDynamicStoreRef session = SCDynamicStoreCreate(NULL, CFSTR("net_test"), NULL, NULL);
-		NSArray *keys = session ? CFBridgingRelease(SCDynamicStoreCopyKeyList(session, CFSTR("Setup:/Network/Service/[^/]+/Interface"))) : nil;
-		bool configd_has_it = false;
-
-		for (NSString *key in keys) {
-			NSDictionary *interface = CFBridgingRelease(SCDynamicStoreCopyValue(session, (__bridge CFStringRef)key));
-
-			configd_has_it |= [interface isKindOfClass:NSDictionary.class] && [interface[@"DeviceName"] isEqual:@"en0"];
-		}
-		if (session != NULL) {
-			CFRelease(session);
-		}
-		if (configd_has_it) {
+	while (seconds() - start <= 30) {
+		if (configd_has_service_for_en0()) {
 			printf("net_test: wifi: configd has a network service for en0 after %.1f s: it configures it itself\n", seconds() - start);
 			return;
 		}
-		if (seconds() - start > 30) {
-			break;
-		}
 		usleep(500000);
 	}
-	printf("net_test: wifi: configd has no network service for en0 (a kernel without its IOKit objects): DHCP asked for\n");
+	printf("net_test: wifi: configd has no network service for en0 after %.0f s\n", seconds() - start);
+	if (repair_preferences()) {
+		printf("net_test: wifi: configd has a network service for en0 now (%.0f s): it configures it itself\n", seconds() - start);
+		return;
+	}
+	printf("net_test: wifi: still no network service for en0: DHCP asked for\n");
 	dhcp("en0");
 }
 
