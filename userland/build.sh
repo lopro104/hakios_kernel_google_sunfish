@@ -553,9 +553,10 @@ done
 [ -d root/lib/HakiosAudio.driver ] && ln -s /redwood/lib/HakiosAudio.driver root/hal/HakiosAudio.driver
 # Programs and libraries of more than 4 MB (Turnip, UniXNU's Metal on Vulkan: TURNIP=1, M2V=1) live in the system
 # image, in /usr/local/redwood, with a link in their place here: the small image is loaded with the kernel, in the
-# 64 MB the loader takes for both (with them it grew from 6.6 to 26 MB).
+# 64 MB the loader takes for both (with them it grew from 6.6 to 26 MB). With FLASHBOOT=1 there is no system image
+# (the root is the Darwin volume on the flash), so they stay in the small image, which loads with the kernel.
 rm -rf big
-for f in $(cd root && find lib bin -type f -size +4M 2>/dev/null); do
+for f in $([ -n "$FLASHBOOT" ] || (cd root && find lib bin -type f -size +4M 2>/dev/null)); do
 	mkdir -p big/$(dirname $f)
 	mv root/$f big/$f
 	ln -s /usr/local/redwood/$f root/$f
