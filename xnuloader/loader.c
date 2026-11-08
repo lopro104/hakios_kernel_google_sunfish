@@ -3557,7 +3557,9 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	}
 
 	/* --- the kernel came back ------------------------------------------- */
-	screen_quiet = screen_quiet_before_run;
+	/* Darwin shutting down or restarting on a boot with no host (codes 1, 2, 3): the screen stays the kernel's, nothing is shown */
+	screen_quiet = (standalone_boot && loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] >= 1 && loader_ctx[CTX_ESR] <= 3) ?
+	    1 : screen_quiet_before_run;
 	wdt_set_ms(WDT_BITE_MS);
 	hc_take_back("the kernel came back");   /* before anything here touches the storage */
 	if (hc_known) {
