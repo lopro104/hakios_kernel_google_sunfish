@@ -2851,6 +2851,7 @@ choose_window(const struct payload_info *pi)
  */
 static int starts_with(const char *s, const char *prefix);
 
+#define NEXT_BOOT_ANDROID        0x41444e52u      /* the word at PAYLOAD_BASE after Darwin asked for Android (see main) */
 static int standalone_boot;     /* the payload came with the boot image and has no USB host to hand a log to */
 
 static int
@@ -3661,13 +3662,6 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 #define ARB_CNFG_PA      0x0c40a000ULL
 #define ARB_CHNLS_PA     0x0c600000ULL
 #define IMEM_RESTART_REASON_PA   0x146aa65cULL
-/*
- * "The next start is Android's" (Boot Switch: the kernel's code 3). Left in IMEM, which a cold reset keeps (the restart-reason
- * cookie above relies on it); U-Boot's `hakios next` reads and clears it before it starts the loader again, and marks the active
- * slot unbootable so that ABL switches slots. Cleared here at every start, so a stale word cannot send a later start away.
- */
-#define IMEM_NEXT_BOOT_PA        0x146aa680ULL
-#define NEXT_BOOT_ANDROID        0x41444e52u
 
 static int
 pmic_write8(uint8_t sid, uint16_t addr, uint8_t value)
@@ -4472,12 +4466,19 @@ efi_main(efi_handle image, efi_system_table *st)
 	/* One-shot mode: run the kernel that came with the image, then reset. */
 	if (have_payload) {
 		standalone_boot = !pi.usb_mode;
-		*(volatile uint32_t *)(uintptr_t)IMEM_NEXT_BOOT_PA = 0;
 		run_kernel(0, 0);
 		if (standalone_boot && loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 3) {
-			/* Boot Switch's restart into Android: tell U-Boot, then start again */
-			*(volatile uint32_t *)(uintptr_t)IMEM_NEXT_BOOT_PA = NEXT_BOOT_ANDROID;
-			print("restart into Android: marker left in IMEM\n");
+			/*
+			 * Boot Switch's restart into Android. No reset in between (nothing in IMEM or the PMIC survives ABL for U-Boot to
+			 * read; tried: the word read back as garbage): the marker goes into the first word of the payload, which U-Boot
+			 * ("hakios next") reads when `hakios boot` returns, and the loader returns to it. U-Boot marks this slot
+			 * unbootable and restarts, and ABL starts the other slot.
+			 */
+			*(volatile uint32_t *)(uintptr_t)PAYLOAD_BASE = NEXT_BOOT_ANDROID;
+			if (wdt_armed) {
+				(void)smc_call(VIRT_WDT_PET, 0, 0, NULL, NULL);     /* 30 s for U-Boot's part */
+			}
+			return 0;
 		}
 		/* Darwin asked to shut down (the kernel's code 1; 2 is a restart: the reset below): the phone goes off */
 		if (loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 1) {
