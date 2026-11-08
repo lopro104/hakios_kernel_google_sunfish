@@ -3622,10 +3622,11 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 			set_result("early-exception", 0, loader_ctx[CTX_ELR]);
 			klog_len = klog_len > (1u << 20) ? 0 : klog_len;
 		} else {
+			print("kernel returned: halt code %d (1 off, 2 restart, 3 restart into Android)\n", (int)loader_ctx[CTX_ESR]);
 			set_result("returned", klog_len, 0);
 		}
 	}
-	if (standalone_boot && reason == 0 && (loader_ctx[CTX_ESR] == 1 || loader_ctx[CTX_ESR] == 2)) {
+	if (standalone_boot && reason == 0 && (loader_ctx[CTX_ESR] >= 1 && loader_ctx[CTX_ESR] <= 3)) {
 		/* Darwin shut down or restarted on a boot with no host: nothing to write, and the log is not worth a screenful */
 		return 1;
 	}
@@ -3658,6 +3659,13 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 #define ARB_CNFG_PA      0x0c40a000ULL
 #define ARB_CHNLS_PA     0x0c600000ULL
 #define IMEM_RESTART_REASON_PA   0x146aa65cULL
+/*
+ * "The next start is Android's" (Boot Switch: the kernel's code 3). Left in IMEM, which a cold reset keeps (the restart-reason
+ * cookie above relies on it); U-Boot's `hakios next` reads and clears it before it starts the loader again, and marks the active
+ * slot unbootable so that ABL switches slots. Cleared here at every start, so a stale word cannot send a later start away.
+ */
+#define IMEM_NEXT_BOOT_PA        0x146aa680ULL
+#define NEXT_BOOT_ANDROID        0x41444e52u
 
 static int
 pmic_write8(uint8_t sid, uint16_t addr, uint8_t value)
@@ -4462,7 +4470,13 @@ efi_main(efi_handle image, efi_system_table *st)
 	/* One-shot mode: run the kernel that came with the image, then reset. */
 	if (have_payload) {
 		standalone_boot = !pi.usb_mode;
+		*(volatile uint32_t *)(uintptr_t)IMEM_NEXT_BOOT_PA = 0;
 		run_kernel(0, 0);
+		if (standalone_boot && loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 3) {
+			/* Boot Switch's restart into Android: tell U-Boot, then start again */
+			*(volatile uint32_t *)(uintptr_t)IMEM_NEXT_BOOT_PA = NEXT_BOOT_ANDROID;
+			print("restart into Android: marker left in IMEM\n");
+		}
 		/* Darwin asked to shut down (the kernel's code 1; 2 is a restart: the reset below): the phone goes off */
 		if (loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 1) {
 			power_off();

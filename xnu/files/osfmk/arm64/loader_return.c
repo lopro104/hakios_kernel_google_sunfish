@@ -369,13 +369,19 @@ loader_log_append_msgbuf(void)
  */
 static uint64_t hakios_halt_kind;
 
+/*
+ * kern.hakios_next_boot: 1 = the restart that follows is into the other system (Android), not into Darwin again. Boot Switch sets
+ * it (through bootd); a restart with it set goes to the loader as code 3, and the loader leaves U-Boot a marker (xnuloader/loader.c).
+ */
+int hakios_next_boot;      /* the sysctl is in bsd/miscfs/apfs/apfs_vfsops.c (this is osfmk: no BSD headers) */
+
 static int
 hakios_halt_note(unsigned int type)
 {
 	if (type == kPEHaltCPU) {
 		hakios_halt_kind = 1;
 	} else if (type == kPERestartCPU) {
-		hakios_halt_kind = 2;
+		hakios_halt_kind = hakios_next_boot == 1 ? 3 : 2;
 	}
 	return -1;
 }

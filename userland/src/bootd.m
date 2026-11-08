@@ -4,7 +4,7 @@
  * The app only posts Darwin notifications; this listens for them and asks the kernel:
  *
  *   com.hakios.reboot, com.hakios.restart   restart the machine (reboot(2) with 0)
- *   com.hakios.next-boot-android            the next start is Android's: sets kern.hakios.next_boot=1 (the kernel tells the loader, which
+ *   com.hakios.next-boot-android            the next start is Android's: sets kern.hakios_next_boot=1 (the kernel tells the loader, which
  *                                           leaves the marker U-Boot acts on) and restarts. Where the kernel has no such switch it says so
  *                                           and does nothing: a restart would only boot iOS again.
  * Any process can post these names; the worst that can happen is a restart.
@@ -214,8 +214,8 @@ main(void)
 		listen_for("com.hakios.next-boot-android", ^{
 			int one = 1;
 
-			if (sysctlbyname("kern.hakios.next_boot", NULL, NULL, &one, sizeof(one)) != 0) {
-				blog("bootd: the kernel has no kern.hakios.next_boot: not restarting (it would boot iOS again)\n");
+			if (sysctlbyname("kern.hakios_next_boot", NULL, NULL, &one, sizeof(one)) != 0) {
+				blog("bootd: the kernel has no kern.hakios_next_boot: not restarting (it would boot iOS again)\n");
 				return;
 			}
 			restart_now("next boot is Android");

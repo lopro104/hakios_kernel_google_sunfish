@@ -474,6 +474,11 @@ sysctl_hakios_memory SYSCTL_HANDLER_ARGS
 SYSCTL_PROC(_kern, OID_AUTO, hakios_memory, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED,
     0, 0, sysctl_hakios_memory, "A", "where the memory is, in MB");
 
+/* kern.hakios_next_boot: 1 = the next restart starts Android (osfmk/arm64/loader_return.c) */
+extern int hakios_next_boot;
+SYSCTL_INT(_kern, OID_AUTO, hakios_next_boot, CTLFLAG_RW | CTLFLAG_LOCKED, &hakios_next_boot, 0,
+    "1: the next restart starts the other system (Android)");
+
 SYSCTL_PROC(_kern, OID_AUTO, apfs_stats, CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_LOCKED,
     0, 0, sysctl_apfs_stats, "A", "APFS: where the time goes; write to zero it");
 

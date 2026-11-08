@@ -1,0 +1,4 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# Shutdown test: the everyday list, then the machine is asked to halt (halt_test, 120 s into the job), to see what the kernel and
+# the loader do with it. "halt_test restart 120" asks for a restart instead.
+/redwood/bin/halt_test android 20
