@@ -114,6 +114,15 @@ Other pending items:
   repo `superboyyy/hakios-arm64e-dada` does iOS 26 natively on Oryon with hardware PAC, kernel patch for xnu-12377).
 - The user also has a Xiaomi 15 (dada) on wireless adb: it is NOT the Pixel; do not touch it.
 
+## Update (end of session): both boot slots were overwritten
+
+The user's own Android build/flash work wiped boot_a AND boot_b (reported 2026-11-08). So boot_a no longer holds the iOS
+image and boot_b no longer holds a working Android boot image until the user reflashes it. Nothing was done to the phone
+by this session after that. Recovery material (PC side, git-ignored): `~/ios-sunfish/scratch/boot-backups/` (boot_a
+before the first iOS flash, and an iOS image backup at `/data/local/tmp/ios-boot-backups/` on the phone, which may be gone),
+`~/hakios/build/ios-boot.img` (the RAM-marker iOS image, untested), rebuild with `devices/sunfish/mkinstall.sh`.
+Ask the user what state the phone is in before doing anything; `fastboot boot` of a test image works without any boot slot.
+
 ## Phone state conventions
 
 - Android's slot b is the normal one; `adb` serial of the Pixel is in the user's shell (not recorded here on purpose).
