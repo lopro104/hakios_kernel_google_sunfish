@@ -303,6 +303,7 @@ touch_lat	ku
 touch_log	k
 touch_poll_us	k
 touch_rate	k
+touch_retries	k
 touch_spi_hz	k
 touchscreen	k
 tu_debug	u
