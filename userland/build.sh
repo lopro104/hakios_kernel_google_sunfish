@@ -137,6 +137,7 @@ INJECT=${INJECT-"/redwood/lib/libhakios.dylib backboardd containermanagerd conta
 /redwood/lib/libhakios.sb.dylib SpringBoard
 /redwood/lib/libhakios.media.dylib mediaserverd
 /redwood/lib/libhakios.app.dylib Sileo
+/redwood/lib/libhakios.ci.dylib MobileSafari
 /redwood/lib/libhakios.tweaks.dylib Preferences"}
 mkdir -p obj
 
@@ -209,6 +210,9 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			  echo "build.sh: no ldid: record_test is unsigned, and the system may not let it record"; }
 		$DYN -o obj/cpu_test src/cpu_test.c
 		$DYN -o obj/halt_test src/halt_test.c
+		$DYN -framework Foundation -framework MobileCoreServices -lobjc -o obj/bootd src/bootd.m &&
+			{ ${LDID:-ldid} -Ssrc/bootd.entitlements obj/bootd 2>/dev/null ||
+			  echo "build.sh: no ldid: bootd is unsigned, and LaunchServices will refuse its registration of the applications"; }
 		# which processes take the processors, every few seconds (src/cputop.c; rc.jobs.cputop)
 		$DYN -o obj/cputop src/cputop.c
 		$DYN -framework CoreFoundation -framework IOSurface -o obj/cow_test src/cow_test.c
@@ -250,6 +254,8 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 		# ... and inside an application, to say what killed it (src/inject_app.c)
 		$DYN -dynamiclib -install_name /redwood/lib/libhakios.app.dylib -lobjc \
 			-o obj/libhakios.app.dylib src/inject_app.c
+		$DYN -dynamiclib -install_name /redwood/lib/libhakios.ci.dylib -lobjc -framework CoreFoundation \
+			-o obj/libhakios.ci.dylib src/inject_ci.c
 		$DYN -O2 -dynamiclib -install_name /redwood/lib/libhakios.media.dylib -framework CoreFoundation -framework CoreMedia \
 			-framework CoreVideo -framework IOSurface -lobjc \
 			-o obj/libhakios.media.dylib src/inject_media.c src/camera_device.c src/camera_isp.c
@@ -266,7 +272,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			[ -f $HM/out/ios/libhakios-metal.a ] || [ ! -f ../../hakios-metal/out/ios/libhakios-metal.a ] || HM=../../hakios-metal
 		fi
 		METAL_GPU=
-		for HM_OUT in $HM/out/ios $HM/out/darwin; do
+		for HM_OUT in ${CHIP:+$HM/out/ios-a$CHIP} $HM/out/ios $HM/out/darwin; do
 			if [ -f $HM_OUT/libhakios-metal.a ]; then
 				METAL_GPU="-DHAKIOS_METAL_GPU -I$HM/include $HM_OUT/libhakios-metal.a -lc++ -framework IOKit -framework IOSurface"
 				# built with its compiler (make ios MESA=1): Mesa's archives of our iOS build too, as hakios-metal's
@@ -349,6 +355,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	cp obj/hello_dyn obj/svc_test obj/surf_test obj/rwtouch obj/mg_test root/bin/
 	[ -f obj/cpu_test ] && cp obj/cpu_test root/bin/        # (a prebuilt/ from before this program has none)
 	[ -f obj/halt_test ] && cp obj/halt_test root/bin/
+	[ -f obj/bootd ] && cp obj/bootd root/bin/
 	[ -f obj/cputop ] && cp obj/cputop root/bin/
 	[ -f obj/cow_test ] && cp obj/cow_test root/bin/
 	[ -f obj/cg_test ] && cp obj/cg_test root/bin/
@@ -376,6 +383,11 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	cp obj/libhakios.dylib obj/libhakios.sb.dylib root/lib/
 	[ -f obj/libhakios.media.dylib ] && cp obj/libhakios.media.dylib root/lib/     # (as with cpu_test)
 	[ -f obj/libhakios.app.dylib ] && cp obj/libhakios.app.dylib root/lib/
+	[ -f obj/libhakios.ci.dylib ] && cp obj/libhakios.ci.dylib root/lib/
+	# EXTRA_APPS: a directory of application bundles to show on the home screen of a flash-root boot (src/init.c, flash_root binds each
+	# one of /apps on a synthetic /Applications entry of the Darwin volume)
+	rm -rf root/apps; mkdir -p root/apps
+	for app in ${EXTRA_APPS:+$EXTRA_APPS/*.app}; do [ -d "$app" ] && cp -R "$app" root/apps/; done
 	[ -f obj/libhakios.tweaks.dylib ] && cp obj/libhakios.tweaks.dylib root/lib/
 	if [ -f obj/HakiosAudio ]; then
 		mkdir -p root/lib/HakiosAudio.driver
@@ -469,6 +481,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	# and not by what select-system.py extracted here (--root-volume; seven jobs turn on the difference,
 	# fairplayd among them).
 	cp com.hakios.demo.plist com.hakios.wifi.plist root/LaunchDaemons/
+	cp com.hakios.bootd.plist root/LaunchDaemons/
 	VOLUME=""
 	[ -n "$FLASHBOOT" ] && [ -f $DARWIN/rootfs.slt ] && VOLUME="--root-volume $DARWIN/rootfs.slt"
 	[ -n "$DARWIN_JOBS" ] && OSLOG=${OSLOG-com.apple.backboardd} ./mkjobs.py ${REST:+--rest} $VOLUME $DARWIN/rootfs root/LaunchDaemons $DARWIN_JOBS
