@@ -1,0 +1,6 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# Boot Switch: whether bootd registered the application with LaunchServices. Its progress is in /private/var/bootd.log; printed at
+# the end, where the run's log keeps it.
+/redwood/bin/rwtouch wait 250
+/redwood/bin/vol_ls cat /private/var/bootd.log 6000
+/redwood/bin/rwtouch wait 5

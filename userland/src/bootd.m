@@ -9,14 +9,18 @@
  *                                           and does nothing: a restart would only boot iOS again.
  * Any process can post these names; the worst that can happen is a restart.
  *
- * Applications of ours in /redwood/apps (build.sh EXTRA_APPS): the Darwin volume is read only and a bind mount is passed over by the
- * registration of /Applications, so each one is registered with LaunchServices from where it lies, as uicache -p does (retried until
- * LaunchServices answers: the daemon starts long before SpringBoard).
+ * Applications of ours in /private/preboot/redwood/apps (build.sh EXTRA_APPS): the Darwin volume is read only, so each one is registered
+ * with LaunchServices, as uicache -p does, from where its files REALLY are -- the boot volume at /private/preboot/redwood, not
+ * /redwood, which is a bind mount of it: LaunchServices keeps an application by volume and file number and takes none from a file
+ * system that does not claim persistent ids (docs/ru/notes.md, the package manager's prefix). Retried until LaunchServices answers: the
+ * daemon starts long before SpringBoard.
  */
 #import <Foundation/Foundation.h>
 #include <dispatch/dispatch.h>
 #include <notify.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
@@ -30,14 +34,35 @@ extern int reboot(int howto);
 - (BOOL)applicationIsInstalled:(NSString *)identifier;
 @end
 
+/* said on the console and kept in /private/var/bootd.log: the kernel's log drops the middle of a run, where these lines come */
+static void
+blog(const char *format, ...) __printflike(1, 2);
+
+static void
+blog(const char *format, ...)
+{
+	char line[400];
+	va_list list;
+	FILE *file;
+
+	va_start(list, format);
+	vsnprintf(line, sizeof(line), format, list);
+	va_end(list);
+	fputs(line, stdout);
+	fflush(stdout);
+	if ((file = fopen("/private/var/bootd.log", "a")) != NULL) {
+		fputs(line, file);
+		fclose(file);
+	}
+}
+
 static void
 restart_now(const char *why)
 {
-	printf("bootd: %s: restarting\n", why);
-	fflush(stdout);
+	blog("bootd: %s: restarting\n", why);
 	sync();
 	reboot(0);
-	printf("bootd: reboot() returned\n");
+	blog("bootd: reboot() returned\n");
 }
 
 static void
@@ -46,8 +71,35 @@ listen_for(const char *name, void (^handler)(void))
 	int token;
 
 	if (notify_register_dispatch(name, &token, dispatch_get_main_queue(), ^(int t) { (void)t; handler(); }) != NOTIFY_STATUS_OK) {
-		printf("bootd: cannot listen for %s\n", name);
+		blog("bootd: cannot listen for %s\n", name);
 	}
+}
+
+/* the pid of the process whose name (the kernel's p_comm, 16 characters at most) is NAME, 0 if none */
+static pid_t
+find_process(const char *name)
+{
+	int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
+	size_t size = 0;
+	struct kinfo_proc *list;
+	pid_t found = 0;
+
+	if (sysctl(mib, 3, NULL, &size, NULL, 0) != 0 || size == 0) {
+		return 0;
+	}
+	size += 32 * sizeof(struct kinfo_proc);
+	if ((list = malloc(size)) == NULL) {
+		return 0;
+	}
+	if (sysctl(mib, 3, list, &size, NULL, 0) == 0) {
+		for (size_t i = 0; i < size / sizeof(struct kinfo_proc); i++) {
+			if (strncmp(list[i].kp_proc.p_comm, name, 16) == 0) {
+				found = list[i].kp_proc.p_pid;
+			}
+		}
+	}
+	free(list);
+	return found;
 }
 
 static int registration_attempts;
@@ -63,9 +115,8 @@ register_application(NSString *path)
 
 	if (identifier == nil || workspace == Nil) {
 		if (registration_attempts < 3) {
-			printf("bootd: cannot register %s: %s%s\n", path.UTF8String, identifier == nil ? "no readable Info.plist with a CFBundleIdentifier " : "",
+			blog("bootd: cannot register %s: %s%s\n", path.UTF8String, identifier == nil ? "no readable Info.plist with a CFBundleIdentifier " : "",
 			    workspace == Nil ? "no LSApplicationWorkspace class" : "");
-			fflush(stdout);
 		}
 		registration_attempts++;
 		return NO;
@@ -83,6 +134,9 @@ register_application(NSString *path)
 	LSApplicationWorkspace *space = [workspace defaultWorkspace];
 	BOOL done = NO;
 
+	if (registration_attempts < 4) {
+		blog("bootd: attempt %d: calling LaunchServices for %s\n", registration_attempts + 1, path.UTF8String);
+	}
 	@try {
 		if (registration_attempts % 2 == 0) {
 			done = [space registerApplicationDictionary:dictionary];
@@ -90,14 +144,12 @@ register_application(NSString *path)
 			done = [space registerApplicationDictionary:dictionary withObserverNotification:YES];
 		}
 		if (registration_attempts < 4 || registration_attempts % 12 == 0) {
-			printf("bootd: attempt %d (%s): registration said %s, installed: %s\n", registration_attempts + 1,
+			blog("bootd: attempt %d (%s): registration said %s, installed: %s\n", registration_attempts + 1,
 			    registration_attempts % 2 == 0 ? "plain" : "with notification", done ? "yes" : "no",
 			    [space applicationIsInstalled:identifier] ? "yes" : "no");
-			fflush(stdout);
 		}
 	} @catch (NSException *exception) {
-		printf("bootd: registration threw %s: %s\n", exception.name.UTF8String, exception.reason.UTF8String);
-		fflush(stdout);
+		blog("bootd: registration threw %s: %s\n", exception.name.UTF8String, exception.reason.UTF8String);
 	}
 	registration_attempts++;
 	return done;
@@ -107,30 +159,47 @@ static void
 register_our_applications(void)
 {
 	NSError *error = nil;
-	NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/redwood/apps" error:&error];
+	NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/private/preboot/redwood/apps" error:&error];
 
-	printf("bootd: /redwood/apps has %lu entries%s%s\n", (unsigned long)names.count, error ? ": " : "", error ? error.localizedDescription.UTF8String : "");
-	fflush(stdout);
+	blog("bootd: /private/preboot/redwood/apps has %lu entries%s%s\n", (unsigned long)names.count, error ? ": " : "", error ? error.localizedDescription.UTF8String : "");
 
 	for (NSString *name in names) {
 		if (![name hasSuffix:@".app"]) {
 			continue;
 		}
-		NSString *path = [@"/redwood/apps" stringByAppendingPathComponent:name];
-		BOOL done = NO;
+		NSString *path = [@"/private/preboot/redwood/apps" stringByAppendingPathComponent:name];
+		__block BOOL done = NO;
 
-		for (int attempt = 1; attempt <= 90 && !done; attempt++) {
-			@autoreleasepool {
-				done = register_application(path);
+		/* LaunchServices is busy with the system's applications for the first half minute after SpringBoard starts */
+		for (int waited = 0; find_process("SpringBoard") == 0 && waited < 600; waited += 2) {
+			sleep(2);
+		}
+		blog("bootd: SpringBoard is up (pid %d): waiting 30 s before registering\n", (int)find_process("SpringBoard"));
+		sleep(30);
+		for (int attempt = 1; attempt <= 40 && !done; attempt++) {
+			/* one call at a time, each on a thread of its own: a call that does not come back is given up on after 45 s */
+			dispatch_semaphore_t finished = dispatch_semaphore_create(0);
+			__block BOOL answer = NO;
+
+			dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+				@autoreleasepool {
+					answer = register_application(path);
+				}
+				dispatch_semaphore_signal(finished);
+			});
+			if (dispatch_semaphore_wait(finished, dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC)) != 0) {
+				blog("bootd: attempt %d: LaunchServices did not answer in 45 s\n", attempt);
+				continue;
 			}
+			done = answer;
 			if (!done) {
 				sleep(5);
 			} else {
-				printf("bootd: %s registered (attempt %d)\n", name.UTF8String, attempt);
+				blog("bootd: %s registered (attempt %d)\n", name.UTF8String, attempt);
 			}
 		}
 		if (!done) {
-			printf("bootd: %s could not be registered\n", name.UTF8String);
+			blog("bootd: %s could not be registered\n", name.UTF8String);
 		}
 		fflush(stdout);
 	}
@@ -146,14 +215,12 @@ main(void)
 			int one = 1;
 
 			if (sysctlbyname("kern.hakios.next_boot", NULL, NULL, &one, sizeof(one)) != 0) {
-				printf("bootd: the kernel has no kern.hakios.next_boot: not restarting (it would boot iOS again)\n");
-				fflush(stdout);
+				blog("bootd: the kernel has no kern.hakios.next_boot: not restarting (it would boot iOS again)\n");
 				return;
 			}
 			restart_now("next boot is Android");
 		});
-		printf("bootd: listening\n");
-		fflush(stdout);
+		blog("bootd: listening\n");
 		dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ register_our_applications(); });
 	}
 	dispatch_main();
