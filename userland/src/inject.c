@@ -1161,6 +1161,44 @@ watch_metallib_lookups(const char *arguments)
 	    ca_metallib ? ca_metallib : "");
 }
 
+/* ---- backboardd: migration progress percentage logging ----------------------------------------------- */
+
+static void (*orig_setProgressValue)(id self, SEL _cmd, float progress);
+
+static void
+my_setProgressValue(id self, SEL _cmd, float progress)
+{
+	static int last_pct = -1;
+	int pct = (int)(progress * 100.0f + 0.5f);
+
+	if (pct != last_pct) {
+		last_pct = pct;
+		say("[BootUI] migration progress: %d%% (%.3f)\n", pct, progress);
+	}
+	if (orig_setProgressValue) {
+		orig_setProgressValue(self, _cmd, progress);
+	}
+}
+
+static void
+hook_progress_ui(void)
+{
+	Class pui = objc_getClass("PUIProgressWindow");
+
+	if (pui == NULL) {
+		dlopen("/System/Library/PrivateFrameworks/ProgressUI.framework/ProgressUI", RTLD_NOW | RTLD_GLOBAL);
+		pui = objc_getClass("PUIProgressWindow");
+	}
+	if (pui != NULL) {
+		Method m = class_getInstanceMethod(pui, sel_registerName("setProgressValue:"));
+
+		if (m != NULL) {
+			orig_setProgressValue = (void (*)(id, SEL, float))method_setImplementation(m, (IMP)my_setProgressValue);
+			say("hakios: hooked PUIProgressWindow setProgressValue:\n");
+		}
+	}
+}
+
 __attribute__((constructor))
 static void
 hakios_init(void)
@@ -1174,6 +1212,7 @@ hakios_init(void)
 	}
 	slide = (uintptr_t)cache - CACHE_BASE;
 	if (strcmp(name, "backboardd") == 0) {
+		hook_progress_ui();
 		char arguments[1024] = "";
 		size_t size = sizeof(arguments) - 1;
 
