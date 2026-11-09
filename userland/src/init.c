@@ -1097,10 +1097,28 @@ mount_writable(void)
 static void
 restore_var(void)
 {
+	const char *erase = boot_arg("var_erase");
 	const char *wanted = boot_arg("var_store");
 	char *argv[3];
 	int status = 0;
 	pid_t pid;
+
+	if (erase != NULL && strcmp(erase, "1") == 0) {
+		printf("\n-- erasing the data volume store on flash --\n");
+		argv[0] = (char *)in_image("/bin/var_store");
+		argv[1] = (char *)"erase";
+		argv[2] = NULL;
+		pid = fork();
+		if (pid == 0) {
+			execve(argv[0], argv, environ);
+			printf("  %s: %s\n", argv[0], strerror(errno));
+			_exit(127);
+		}
+		if (pid > 0) {
+			wait4(pid, &status, 0, NULL);
+		}
+		return;
+	}
 
 	if (wanted == NULL || strcmp(wanted, "1") != 0) {
 		return;
@@ -1118,6 +1136,11 @@ restore_var(void)
 	if (pid < 0 || wait4(pid, &status, 0, NULL) != pid || !WIFEXITED(status)) {
 		printf("  var_store did not run\n");
 	}
+
+	/* ensure migration record is never clobbered by an older archive */
+	copy_file(in_image("/var/mobile/Library/Preferences/com.apple.migration.plist"),
+	    "/private/var/mobile/Library/Preferences/com.apple.migration.plist",
+	    0644, 501, 501);
 }
 
 static int
