@@ -2852,6 +2852,8 @@ choose_window(const struct payload_info *pi)
 static int starts_with(const char *s, const char *prefix);
 
 #define NEXT_BOOT_ANDROID        0x41444e52u      /* the word at PAYLOAD_BASE after Darwin asked for Android (see main) */
+static const char *standalone_klog;    /* the kernel's log of a standalone boot that ended badly: "oem log" composes it in again */
+static uint64_t standalone_klog_len;
 static int standalone_boot;     /* the payload came with the boot image and has no USB host to hand a log to */
 
 static int
@@ -3559,8 +3561,8 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 
 	/* --- the kernel came back ------------------------------------------- */
 	/* Darwin shutting down or restarting on a boot with no host (codes 1, 2, 3): the screen stays the kernel's, nothing is shown */
-	screen_quiet = (standalone_boot && loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] >= 1 && loader_ctx[CTX_ESR] <= 3) ?
-	    1 : screen_quiet_before_run;
+	screen_quiet = (standalone_boot && loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] >= 1 && loader_ctx[CTX_ESR] <= 2) ?
+	    1 : screen_quiet_before_run;      /* (3, the restart into Android, is shown while it is being brought up) */
 	wdt_set_ms(WDT_BITE_MS);
 	hc_take_back("the kernel came back");   /* before anything here touches the storage */
 	if (hc_known) {
@@ -3631,6 +3633,14 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	}
 	if (standalone_boot && reason == 0 && (loader_ctx[CTX_ESR] >= 1 && loader_ctx[CTX_ESR] <= 3)) {
 		/* Darwin shut down or restarted on a boot with no host: nothing to write, and the log is not worth a screenful */
+		return 1;
+	}
+	if (standalone_boot) {
+		/* no log partition, no host yet: not echoed on the screen (a kernel log is a million bytes of it); main() starts the
+		 * USB command loop, and `xl log` fetches what compose_logs() leaves here */
+		compose_logs(klog, klog_len);
+		standalone_klog = klog;
+		standalone_klog_len = klog_len;
 		return 1;
 	}
 	write_logs(klog, klog_len);
@@ -4092,7 +4102,7 @@ fb_command(char *cmd)
 			if (busy && running_live != NULL) {
 				compose_live_log(running_live, running_slide);
 			} else {
-				compose_logs(NULL, 0);
+				compose_logs(standalone_klog, standalone_klog_len);
 			}
 			fb_reply("OKAY", "");
 		} else if (starts_with(cmd, "reboot") || starts_with(cmd, "oem reboot")) {
@@ -4474,6 +4484,7 @@ efi_main(efi_handle image, efi_system_table *st)
 			 * ("hakios next") reads when `hakios boot` returns, and the loader returns to it. U-Boot marks this slot
 			 * unbootable and restarts, and ABL starts the other slot.
 			 */
+			print("restart into Android: leaving the marker and returning to U-Boot\n");
 			*(volatile uint32_t *)(uintptr_t)PAYLOAD_BASE = NEXT_BOOT_ANDROID;
 			if (wdt_armed) {
 				(void)smc_call(VIRT_WDT_PET, 0, 0, NULL, NULL);     /* 30 s for U-Boot's part */
@@ -4483,6 +4494,13 @@ efi_main(efi_handle image, efi_system_table *st)
 		/* Darwin asked to shut down (the kernel's code 1; 2 is a restart: the reset below): the phone goes off */
 		if (loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 1) {
 			power_off();
+		}
+		if (standalone_boot && !(loader_ctx[CTX_REASON] == 0 && loader_ctx[CTX_ESR] == 2)) {
+			/* anything else (a panic, a timed return): the phone becomes a fastboot device the PC can read the log from */
+			screen_quiet = 1;
+			if (usb_start()) {
+				usb_command_loop();
+			}
 		}
 	}
 	reboot();

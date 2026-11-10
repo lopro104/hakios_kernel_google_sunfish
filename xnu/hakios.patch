@@ -871,6 +871,42 @@ index 1d71c66629fb..a22095ccf5f0 100644
  	if (0 == error) {
  		/*
  		 * Update the new process's signature-dependent process state.
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+index 1161432246f9..420d3201c47c 100644
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -80,6 +80,7 @@
+ #include <sys/systm.h>
+ #include <sys/ioctl.h>
+ #include <sys/proc_internal.h>
++#include <sys/reboot.h>
+ #include <sys/proc.h>
+ #include <sys/kauth.h>
+ #include <sys/tty.h>
+@@ -1772,9 +1773,23 @@ proc_crash_coredump(proc_t p)
+ #endif /* (DEVELOPMENT || DEBUG) && CONFIG_COREDUMP */
+ }
+ 
++/* set when launchd exited during a shutdown that was already under way (bsd/kern/kern_shutdown.c then leaves it alone) */
++uint32_t hakios_init_exited_in_shutdown;
++
+ static void
+ proc_handle_critical_exit(proc_t p, int rv)
+ {
++	/*
++	 * A reboot is already under way (reboot_kernel set system_inshutdown): launchd that got its SIGTERM has torn the system
++	 * down and exits before the kernel, still unmounting, reaches the halt. That is what it is meant to do here, not a
++	 * crash: panicking would hand the machine back to the loader as a panic (halt code 0, a log dumped on the screen)
++	 * instead of the halt or restart that was asked for.
++	 */
++	if (p == initproc && get_system_inshutdown() != 0) {
++		printf("pid %d (init) exited during the shutdown: no panic\n", proc_getpid(p));
++		hakios_init_exited_in_shutdown = 1;
++		return;
++	}
+ 	if (!proc_should_trigger_panic(p, rv)) {
+ 		// No panic, bail out
+ 		return;
 diff --git a/bsd/kern/kern_memorystatus.c b/bsd/kern/kern_memorystatus.c
 index 1750d3a52d3c..0373d0dd160f 100644
 --- a/bsd/kern/kern_memorystatus.c
@@ -958,7 +994,7 @@ index 88adf2dda936..168384889bc1 100644
  	 * We first evaluate policies that may deny the granting of
  	 * privilege unilaterally.
 diff --git a/bsd/kern/kern_shutdown.c b/bsd/kern/kern_shutdown.c
-index 20d9d475e0b9..d9f236a6c636 100644
+index 20d9d475e0b9..ec72a1e52ebd 100644
 --- a/bsd/kern/kern_shutdown.c
 +++ b/bsd/kern/kern_shutdown.c
 @@ -64,6 +64,7 @@
@@ -992,6 +1028,24 @@ index 20d9d475e0b9..d9f236a6c636 100644
  		}
  
  
+@@ -748,10 +759,14 @@ sigterm_loop:
+ 
+ 	/*
+ 	 * Now that all other processes have been terminated, suspend init
++	 * (unless it is gone: launchd that got its SIGTERM exits on its own, and there is no task to suspend then)
+ 	 */
+-	task_suspend_internal(proc_task(initproc));
++	extern uint32_t hakios_init_exited_in_shutdown;
++	if (!hakios_init_exited_in_shutdown) {
++		task_suspend_internal(proc_task(initproc));
+ 
+-	/* drop the ref on initproc */
+-	proc_rele(initproc);
++		/* drop the ref on initproc */
++		proc_rele(initproc);
++	}
+ 	printf("continuing\n");
+ }
 diff --git a/bsd/kern/kern_sig.c b/bsd/kern/kern_sig.c
 index ae4a5f33df1e..986b517dfd18 100644
 --- a/bsd/kern/kern_sig.c
