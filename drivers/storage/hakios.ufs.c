@@ -88,6 +88,9 @@ extern void FlushPoC_DcacheRegion(vm_offset_t va, size_t length);   /* osfmk/arm
  * that is): at least the layout's 20 GiB.
  */
 #define UFS_WRITE_FIRST    2042368ULL                  /* darwin's blocks of 4096 */
+/* where the data volume (HFS Plus) begins: 8 GiB, past the Pixel 4a's firmware container (third container, 85 MB from
+ * UFS_WRITE_FIRST on, mounted on /fw): a volume made from UFS_WRITE_FIRST would have written over it */
+#define UFS_DATA_FIRST     2097152ULL
 #define UFS_DARWIN_MIN     5242875ULL                  /* the first phone's darwin, in blocks of 4096 */
 
 struct loader_block_part {
@@ -688,7 +691,7 @@ ufs_is_data(dev_t dev)
 static uint64_t
 ufs_data_bytes(void)
 {
-	return ufs_part_bytes((uint32_t)ufs_write_part) - UFS_WRITE_FIRST * 4096;
+	return ufs_part_bytes((uint32_t)ufs_write_part) - UFS_DATA_FIRST * 4096;
 }
 
 /*
@@ -727,7 +730,7 @@ ufs_data_flush(void)
 static int
 ufs_data_io(bool write, uint64_t offset, uint8_t *p, uint64_t len)
 {
-	uint64_t base = UFS_WRITE_FIRST * 4096, size = ufs_data_bytes();
+	uint64_t base = UFS_DATA_FIRST * 4096, size = ufs_data_bytes();
 	uint8_t *bounce;
 	int error = 0;
 
