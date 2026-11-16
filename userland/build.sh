@@ -541,6 +541,14 @@ if [ -n "$ADSP" ] && [ -f ../fw-audio/adsp.mdt ]; then
 	mkdir -p root/fw
 	install -m 0644 ../fw-audio/adsp.mdt ../fw-audio/adsp.b0[2-9] ../fw-audio/adsp.b[1-9][0-9] root/fw/
 fi
+# The Pixel 4a's audio DSP image (devices/sunfish/drivers/audio/hakios.adsp_sm7150.c, adsp=N), only with FW_ADSP=DIR: the
+# /firmware directory of the phone's vendor image (adsp.mdt, adsp.bNN; 16 MB, the vendor's, never in the repository)
+if [ -n "$FW_ADSP" ] && [ -f "$FW_ADSP/adsp.mdt" ]; then
+	mkdir -p root/fw-adsp
+	install -m 0644 "$FW_ADSP"/adsp.mdt "$FW_ADSP"/adsp.b[0-9][0-9] root/fw-adsp/
+else
+	rm -rf root/fw-adsp
+fi
 # Firmware that is not there is otherwise silent at build time and speaks only much later, deep in a
 # device log -- "adreno: THE GPU IS NOT STARTED: the small image has no fw/a660_gmu.bin" cost a phone
 # slot on 19 October 2026. It is the vendor's and never in the repository, so a copy made with bare
