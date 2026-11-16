@@ -1,0 +1,2 @@
+# Step 2: write it (refuses when a volume is already there; every block is read back). Same build line with RC_JOBS=rc.jobs.datavolwrite.
+/redwood/bin/datavol_write /redwood/share/datavol.simg

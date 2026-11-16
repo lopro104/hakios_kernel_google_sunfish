@@ -153,7 +153,7 @@ else
 	$CC $LD -o hello src/hello.c
 	$CC -Ilibmini -c libmini/mini.c -o obj/mini.o
 	$CC -c libmini/start.S -o obj/start.o
-	for prog in init child stage0 var_store; do
+	for prog in init child stage0 var_store datavol_write; do
 		$CC -Ilibmini $LD -o obj/$prog.new src/$prog.c obj/mini.o obj/start.o
 		# keep the old file (and its time stamp) when nothing changed: system.apfs depends on stage0
 		cmp -s obj/$prog.new obj/$prog && rm obj/$prog.new || mv obj/$prog.new obj/$prog
@@ -169,6 +169,9 @@ cp obj/child root/bin/child
 # ends: the program and its job together, away from the Darwin job list below, which several working
 # copies are editing at once.
 [ -f obj/var_store ] && cp obj/var_store root/bin/
+[ -f obj/datavol_write ] && cp obj/datavol_write root/bin/
+# the empty data volume (tools/mkdatavol.py), for datavol_write to put into the flash from inside Darwin: only with DATAVOL=FILE
+if [ -n "$DATAVOL" ]; then mkdir -p root/share && cp "$DATAVOL" root/share/datavol.simg; fi
 cp com.hakios.varstore.plist root/LaunchDaemons/
 echo "Darwin on hakios: image built $(date '+%Y-%m-%d %H:%M')" > root/etc/motd
 # 300000 bytes, byte i = (i*31 + (i>>8)) & 0xff; init verifies it through read() and mmap()

@@ -1,0 +1,3 @@
+# Data volume (HFS Plus, tools/mkdatavol.py) into the darwin partition from inside Darwin, step 1: only SAY what would be written.
+# Build: DATAVOL=<the .simg> RC_JOBS=rc.jobs.datavol devices/sunfish/build-flash.sh, run from the PC (run.sh).
+/redwood/bin/datavol_write /redwood/share/datavol.simg check
