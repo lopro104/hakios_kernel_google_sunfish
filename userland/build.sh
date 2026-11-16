@@ -546,6 +546,10 @@ fi
 if [ -n "$FW_ADSP" ] && [ -f "$FW_ADSP/adsp.mdt" ]; then
 	mkdir -p root/fw-adsp
 	install -m 0644 "$FW_ADSP"/adsp.mdt "$FW_ADSP"/adsp.b[0-9][0-9] root/fw-adsp/
+	# ... and the speaker amplifiers' protection firmware and its tuning (hakios.cs35l41_sunfish.c), where the directory has them
+	for f in cs35l41-dsp1-spk-prot.wmfw cs35l41-dsp1-spk-prot.bin R-cs35l41-dsp1-spk-prot.bin; do
+		[ -f "$FW_ADSP/$f" ] && install -m 0644 "$FW_ADSP/$f" root/fw-adsp/
+	done
 else
 	rm -rf root/fw-adsp
 fi
