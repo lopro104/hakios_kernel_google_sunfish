@@ -649,7 +649,8 @@ if [ -n "$FLASHBOOT" ] && [ -f $CACHE/dyld_shared_cache_arm64 ]; then
 	# the package manager's prefix, when tools/mk-jb.sh has fetched one: /jb of the boot volume, which is
 	# /private/preboot/jb once the Darwin volume is the root -- the volume where a rootless jailbreak keeps its
 	# Procursus on an iPhone as well; init grafts it onto /var/jb (src/init.c, mount_writable)
-	if [ -d ../jb/root/var/jb ]; then
+	# only with JB=1: 132 MB, more than the boot volume in RAM and the 64 MB boot partition can take
+	if [ -n "$JB" ] && [ -d ../jb/root/var/jb ]; then
 		cp -a ../jb/root/var/jb flashboot/jb
 		mkdir -p flashboot/jb-rw        # where init mounts the prefix's writable copy (src/init.c)
 		# and what Sileo runs from /bin, for init to put over the Darwin volume's /bin (see the system image below)
