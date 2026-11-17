@@ -3723,6 +3723,52 @@ reset_to_bootloader(void)
 	ST->rt->reset_system(0 /* EfiResetCold */, 0, 0, NULL);
 }
 
+/*
+ * One PMIC register read through this environment's observer channel (0x80 bytes per channel at ARB_OBS_PA): the
+ * value, or -1. Only reads: nothing here can change the PMIC.
+ */
+#define ARB_OBS_PA       0x0e600000ULL
+
+static uint32_t pmic_last_status, pmic_last_apid, pmic_last_spins;  /* of the last read, for "oem pmic" */
+
+static int
+pmic_read8(uint8_t sid, uint16_t addr)
+{
+	uint32_t ppid = ((uint32_t)sid << 8) | (addr >> 8);
+	int apid = -1;
+
+	for (uint32_t i = 0; 0x900 + 4 * i < 0x1100; i++) {
+		uint32_t map = *(volatile uint32_t *)(uintptr_t)(ARB_CORE_PA + 0x900 + 4 * i);
+
+		if (map != 0 && ((map >> 8) & 0xfff) == ppid) {
+			apid = (int)i;
+		}
+	}
+	if (apid < 0) {
+		return -1;
+	}
+	volatile uint32_t *ch = (volatile uint32_t *)(uintptr_t)(ARB_OBS_PA + 0x80ULL * (uint32_t)apid);
+
+	__asm__ volatile ("dmb oshst" ::: "memory");
+	ch[0] = (1u << 27 /* EXT_READL */) | ((uint32_t)(addr & 0xff) << 4) | 0 /* one byte */;
+	/* (the command must reach the arbiter before its status is looked at: without this the last read's "done" and data came back) */
+	__asm__ volatile ("dsb osh" ::: "memory");
+	/* (and some time to take it: a status looked at at once could still be the last read's "done", with its data) */
+	BS->stall(5);
+	pmic_last_apid = (uint32_t)apid;
+	for (uint32_t n = 0; n < 2000; n++) {
+		uint32_t status = ch[0x08 / 4];
+
+		pmic_last_status = status;
+		pmic_last_spins = n;
+		if (status & 1) {
+			return (status & 0xe) ? -1 : (int)(ch[0x18 / 4] & 0xff);
+		}
+		BS->stall(1);
+	}
+	return -1;
+}
+
 static usb_device_protocol *USB;
 static int download_to_ramdisk;     /* set by "oem ramdisk" for the one download that follows */
 static uint8_t *usb_rx_buf, *usb_tx_buf;
@@ -3760,6 +3806,9 @@ usb_dummy_notify(void *event, void *ctx)
 {
 }
 
+static usb_device_descriptor_set usb_set;
+#define set usb_set
+
 static int
 usb_start(void)
 {
@@ -3767,7 +3816,6 @@ usb_start(void)
 	static const efi_guid init_guid = QCOM_USB_INIT_EVENT_GUID;
 	static const void *cfg = usb_cfg_desc, *ss_cfg = usb_ss_cfg_desc;
 	static const void *strings[5] = { usb_str0, usb_str_mfr, usb_str_prod, usb_str_serial, usb_str_iface };
-	static usb_device_descriptor_set set;
 	void *event;
 
 	/* Ask the platform to bring the controller up in peripheral mode (as the stock fastboot does). */
@@ -3801,6 +3849,54 @@ usb_start(void)
 	print("usb: started\n");
 	return 1;
 }
+#undef set
+
+/*
+ * The Pixel 4a: is a cable with power in? The charger's USBIN "plugged in" status (PM6150, slave 0, 0x1310 bit 4, as
+ * Android's smb5 reads it). At a plug-in the charger takes the data lines for its own detection (the device tree's
+ * dpdm-supply), and the controller was never told: a cable plugged in after the loader started, or pulled and plugged
+ * again, met a device the host could not see. So at every plug-in the controller is stopped and started anew, the
+ * way Android's driver restarts it. -1: not this phone, or the PMIC could not be read.
+ */
+static int
+cable_in(void)
+{
+	int v, t;
+
+	if (PLAT == NULL || !starts_with(PLAT->name, "sunfish")) {
+		return -1;
+	}
+	/*
+	 * The USB-C port's attach state (TYPE_C_STATE_MACHINE_STATUS 0x1509 bit 5) or USBIN's plug-in status (0x1310 bit 4):
+	 * the second alone read 0 with a cable in after a kernel run (its interrupt bits are the charger driver's to clear).
+	 */
+	/* each register read twice, and believed only when both agree (a stale answer has been seen: see pmic_read8()) */
+	v = pmic_read8(0, 0x1509);
+	if (v != pmic_read8(0, 0x1509)) {
+		return -1;
+	}
+	if (v >= 0 && (v >> 5) & 1) {
+		return 1;
+	}
+	t = pmic_read8(0, 0x1310);
+	if (t != pmic_read8(0, 0x1310)) {
+		return -1;
+	}
+	return v < 0 && t < 0 ? -1 : t >= 0 && (t >> 4) & 1;
+}
+
+/* stopped and started again with the same descriptors: true if it came back */
+static int
+usb_restart(void)
+{
+	efi_status s;
+
+	USB->stop();
+	BS->stall(100000);
+	s = USB->start_ex(&usb_set);
+	usb_connected = 0;
+	return !EFI_ERROR(s);
+}
 
 /*
  * Pump controller events until a transfer on `endpoint` finishes.
@@ -3818,7 +3914,8 @@ static int64_t
 usb_wait(uint8_t endpoint)
 {
 	/* static: a long transfer is many short waits, and the watchdog must be fed across them */
-	static uint64_t last_pet;
+	static uint64_t last_pet, last_cable_look, plugged_at;
+	static int cable_was = -1, restarts_due, reboot_due;
 	uint64_t freq = READ_SYSREG(CNTFRQ_EL0), began = READ_SYSREG(CNTVCT_EL0);
 
 	for (;;) {
@@ -3830,6 +3927,45 @@ usb_wait(uint8_t endpoint)
 		if (msg == UsbDeviceEventDeviceStateChange) {
 			usb_connected = (data.device_state == UsbDeviceStateConnected);
 			return -1;
+		}
+		/*
+		 * Four times a second: has a cable just been plugged in (see cable_in())? Then the controller is started anew
+		 * 1.5 s later, when the charger's own detection on the data lines is over (restarted at once, during it, the
+		 * host still saw nothing), and again at 4 s if no host has set it up by then.
+		 */
+		if (READ_SYSREG(CNTVCT_EL0) - last_cable_look > freq / 4) {
+			int now = cable_in();
+			uint64_t t = READ_SYSREG(CNTVCT_EL0);
+
+			last_cable_look = t;
+			if (now == 1 && cable_was == 0) {
+				plugged_at = t;
+				restarts_due = 2;
+			}
+			if (now >= 0) {
+				cable_was = now;
+			}
+			if (now == 1 && restarts_due != 0 && t - plugged_at > (restarts_due == 2 ? freq * 3 / 2 : freq * 4)) {
+				restarts_due--;
+				if (restarts_due == 1 || !usb_connected) {
+					(void)usb_restart();
+					reboot_due = 1;
+					return -1;
+				}
+			}
+			/*
+			 * 10 s after a plug-in and still no host: the restart above did not bring the device back (it did not after a
+			 * replug, logs of 2026-11-18 ~01:10: the charger's handling of the data lines at the plug-in is more than a
+			 * restart undoes). With no kernel running, the phone goes to the stock bootloader, whose fastboot works with
+			 * any cable (run.sh starts from there).
+			 */
+			if (now == 1 && reboot_due && !usb_connected && !run_active && t - plugged_at > freq * 10) {
+				print("usb: a cable was plugged in 10 s ago and no host came: to the bootloader\n");
+				reset_to_bootloader();
+			}
+			if (usb_connected) {
+				reboot_due = 0;
+			}
 		}
 		/* with a kernel running, a host that went away must not keep this core from watching it */
 		if (run_active && READ_SYSREG(CNTVCT_EL0) - began > 3 * freq) {
@@ -3923,6 +4059,55 @@ fb_command(char *cmd)
 		    starts_with(cmd, "oem selftest") || starts_with(cmd, "oem hang") || starts_with(cmd, "oem recording") ||
 		    starts_with(cmd, "oem sound") || starts_with(cmd, "oem clearscreen") || starts_with(cmd, "oem memmap"))) {
 			fb_reply("FAIL", "a kernel is running (oem stop ends it)");
+		} else if (starts_with(cmd, "oem cable")) {
+			/* what the plug-in detection sees: the charger's raw USBIN status and the verdict */
+			char t[48];
+			int raw = pmic_read8(0, 0x1310), in = cable_in();
+			char *q = t;
+			const char *a = "usbin=";
+
+			while (*a) *q++ = *a++;
+			if (raw < 0) {
+				*q++ = '-'; *q++ = '1';
+			} else {
+				*q++ = "0123456789abcdef"[(raw >> 4) & 15];
+				*q++ = "0123456789abcdef"[raw & 15];
+			}
+			a = " cable=";
+			while (*a) *q++ = *a++;
+			*q++ = in < 0 ? '?' : (char)('0' + in);
+			*q = 0;
+			fb_reply("OKAY", t);
+		} else if (starts_with(cmd, "oem pmic ")) {
+			/* "oem pmic 1509": one register of the PM6150 (slave 0), read only, answered in hex */
+			char t[16];
+			uint32_t a = 0;
+			int v;
+
+			for (const char *c = cmd + 9; *c; c++) {
+				a = a << 4 | (uint32_t)(*c <= '9' ? *c - '0' : (*c | 0x20) - 'a' + 10);
+			}
+			v = pmic_read8(0, (uint16_t)a);
+			char u[48];
+			uint32_t f[3] = { pmic_last_apid, pmic_last_status, pmic_last_spins };
+			char *q = u;
+
+			t[0] = v < 0 ? '-' : "0123456789abcdef"[(v >> 4) & 15];
+			t[1] = v < 0 ? '1' : "0123456789abcdef"[v & 15];
+			t[2] = 0;
+			/* the value, then the channel, the last status and how many microseconds it took, in hex */
+			for (const char *c = t; *c; c++) *q++ = *c;
+			for (int k = 0; k < 3; k++) {
+				*q++ = ' ';
+				for (int b = 28; b >= 0; b -= 4) *q++ = "0123456789abcdef"[(f[k] >> b) & 15];
+			}
+			*q = 0;
+			fb_reply("OKAY", u);
+		} else if (starts_with(cmd, "oem usbrestart")) {
+			/* the restart a plug-in gets, on demand: answered first, then done (the host sees the device go and come back) */
+			fb_reply("OKAY", "restarting usb");
+			BS->stall(200000);
+			(void)usb_restart();
 		} else if (starts_with(cmd, "oem stop")) {
 			/* the kernel looks at this once a second and comes back as it does when its time is up */
 			if (busy && running_live != NULL) {
