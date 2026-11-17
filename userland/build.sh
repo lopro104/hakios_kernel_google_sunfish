@@ -748,7 +748,7 @@ if [ -f $DARWIN/system.manifest ] && [ -f $CACHE/dyld_shared_cache_arm64 ] &&
 	# the package manager's prefix, when tools/mk-jb.sh has fetched one: the Procursus bootstrap with
 	# Sileo in it, as /jb. It cannot live at /var/jb in the image -- /private/var is a memory
 	# filesystem made afresh at every boot -- so init copies it there (src/init.c, copy_tree).
-	if [ -d ../jb/root/var/jb ]; then
+	if [ -n "$JB" ] && [ -d ../jb/root/var/jb ]; then
 		rm -rf sysroot/jb
 		cp -a ../jb/root/var/jb sysroot/jb
 		# the applications of the prefix are system applications here: LaunchServices builds its
