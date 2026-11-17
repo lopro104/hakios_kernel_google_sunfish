@@ -1,0 +1,9 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# rc.jobs.mic without the speakers' check (nothing played aloud: for a run with nobody at the phone): the
+# springboard settled, then two recordings the way an application makes them (record_test, AVAudioRecorder through
+# the built-in microphone, HakiosAudio.driver's "Codec", the kernel's /dev/hakios-mic): six seconds with the
+# vibration motor on from the third to the fourth (something the microphone should hear), then four of the room.
+/redwood/bin/sound_test springboard wait 60
+/redwood/bin/record_test 6 vibrate 3
+/redwood/bin/rwtouch wait 3
+/redwood/bin/record_test 4
