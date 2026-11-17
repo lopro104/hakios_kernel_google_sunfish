@@ -119,10 +119,10 @@ index 4b83160780c3..8997af1f0e1b 100644
  include $(MakeInc_rule)
  include $(MakeInc_dir)
 diff --git a/bsd/conf/files b/bsd/conf/files
-index 44274016a4cf..ce540e5f44f2 100644
+index 44274016a4cf..4a390dc78607 100644
 --- a/bsd/conf/files
 +++ b/bsd/conf/files
-@@ -109,6 +109,63 @@ bsd/dev/munge.c 			optional config_requires_u32_munging
+@@ -109,6 +109,67 @@ bsd/dev/munge.c 			optional config_requires_u32_munging
  bsd/dev/unix_startup.c			standard
  
  bsd/dev/monotonic.c optional monotonic
@@ -170,6 +170,10 @@ index 44274016a4cf..ce540e5f44f2 100644
 +bsd/dev/hakios.lx.c                      optional hakios_wifi
 +bsd/dev/hakios.sta.c                     optional hakios_wifi
 +bsd/dev/hakios.apple80211.c              optional hakios_wifi
++bsd/dev/hakios.adsp_sm7150.c             optional hakios_adsp_sm7150
++bsd/dev/hakios.cs35l41_sunfish.c         optional hakios_cs35l41_sunfish
++bsd/dev/hakios.rt5514_sunfish.c          optional hakios_rt5514_sunfish
++bsd/dev/hakios.torch_sunfish.c           optional hakios_torch_sunfish
 +bsd/dev/hakios.cmdpanel.c                optional hakios_cmdpanel
 +bsd/dev/hakios.cmdbright.c               optional hakios_cmdbright
 +bsd/dev/hakios.adreno_a618.c             optional hakios_adreno_a618
@@ -186,7 +190,7 @@ index 44274016a4cf..ce540e5f44f2 100644
  bsd/dev/dev_perfmon.c optional config_perfmon
  
  bsd/libkern/crc32.c			standard
-@@ -155,6 +212,52 @@ bsd/miscfs/devfs/devfs_vfsops.c		optional devfs
+@@ -155,6 +216,52 @@ bsd/miscfs/devfs/devfs_vfsops.c		optional devfs
  bsd/miscfs/mockfs/mockfs_fsnode.c	optional mockfs
  bsd/miscfs/mockfs/mockfs_vfsops.c	optional mockfs
  bsd/miscfs/mockfs/mockfs_vnops.c	optional mockfs
@@ -239,7 +243,7 @@ index 44274016a4cf..ce540e5f44f2 100644
  
  bsd/miscfs/routefs/routefs_ops.c	optional routefs
  
-@@ -361,6 +464,7 @@ bsd/security/audit/audit_syscalls.c		standard
+@@ -361,6 +468,7 @@ bsd/security/audit/audit_syscalls.c		standard
  bsd/security/audit/audit_worker.c		optional config_audit
  
  bsd/pthread/pthread_shims.c		standard
@@ -247,7 +251,7 @@ index 44274016a4cf..ce540e5f44f2 100644
  bsd/pthread/pthread_priority.c		standard
  bsd/pthread/pthread_workqueue.c		standard
  
-@@ -383,6 +487,7 @@ bsd/kern/kern_debug.c			standard
+@@ -383,6 +491,7 @@ bsd/kern/kern_debug.c			standard
  bsd/kern/kern_symfile.c			standard
  bsd/kern/kern_descrip.c			standard
  bsd/kern/kern_guarded.c			standard
@@ -3481,6 +3485,42 @@ index 050f34a53c49..c58ff62cd419 100644
  ifneq (,$(wildcard $(MASTERCONFDIR)/MASTER.$(DOCONF_ARCH_CONFIG_LC).$(CURRENT_MACHINE_CONFIG_LC)))
  DOCONFDEPS += $(MASTERCONFDIR)/MASTER.$(DOCONF_ARCH_CONFIG_LC).$(CURRENT_MACHINE_CONFIG_LC)
  endif
+diff --git a/pexpert/gen/bootargs.c b/pexpert/gen/bootargs.c
+index c94c0ebe1224..f7322281483c 100644
+--- a/pexpert/gen/bootargs.c
++++ b/pexpert/gen/bootargs.c
+@@ -187,13 +187,20 @@ gotit:
+ 	return arg_found;
+ }
+ 
++/*
++ * HakiOS: the phone's default arguments, built into the kernel (CONFIG_DEFAULT_ARGS, drivers/core/hakios.platform.c).
++ * An argument the command line does not have is looked for there; the command line's always wins.
++ */
++extern const char hakios_default_bootargs[];
++
+ boolean_t
+ PE_parse_boot_argn(
+ 	const char      *arg_string,
+ 	void            *arg_ptr,
+ 	int                     max_len)
+ {
+-	return PE_parse_boot_argn_internal(PE_boot_args(), arg_string, arg_ptr, max_len, FALSE);
++	return PE_parse_boot_argn_internal(PE_boot_args(), arg_string, arg_ptr, max_len, FALSE) ||
++	       PE_parse_boot_argn_internal(__DECONST(char *, hakios_default_bootargs), arg_string, arg_ptr, max_len, FALSE);
+ }
+ 
+ boolean_t
+@@ -202,7 +209,8 @@ PE_parse_boot_arg_str(
+ 	char            *arg_ptr,
+ 	int                     strlen)
+ {
+-	return PE_parse_boot_argn_internal(PE_boot_args(), arg_string, arg_ptr, strlen, TRUE);
++	return PE_parse_boot_argn_internal(PE_boot_args(), arg_string, arg_ptr, strlen, TRUE) ||
++	       PE_parse_boot_argn_internal(__DECONST(char *, hakios_default_bootargs), arg_string, arg_ptr, strlen, TRUE);
+ }
+ 
+ #if defined(CONFIG_XNUPOST)
 diff --git a/pexpert/pexpert/arm64/BCM2837.h b/pexpert/pexpert/arm64/BCM2837.h
 index d9f0723244e5..53fe4f371d7f 100644
 --- a/pexpert/pexpert/arm64/BCM2837.h

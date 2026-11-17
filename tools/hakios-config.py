@@ -84,6 +84,12 @@ SYMBOLS = [
     # Linux's CONFIG_CMDLINE: whatever the symbols above do not cover, as name=value words in quotes. It is not an escape
     # from the checks: every name must be one the source reads (configs/boot-args.lst), so a typo is an error, not a no-op.
     ("BOOTARGS", "args", None, "more kernel arguments, as `name=value` words in quotes; each name must be one docs/boot-args.md lists", None, None),
+    # Built into the kernel instead of put on its command line: what a phone runs with every time. The kernel reads an
+    # argument here when its command line does not have it (pexpert/gen/bootargs.c), so the command line still overrides
+    # one (adsp=10 for a test, gpu=0 to leave a driver off). Arguments the loader reads (cpus, bootcpu, torch, ...) do not
+    # belong here: the loader does not see this string.
+    ("DEFAULT_ARGS", "args", None, "the kernel's own default arguments, as `name=value` words in quotes, used when the command "
+                                   "line does not give the name", None, None),
 ]
 
 # The group a symbol is listed under in the documented defconfig (the generated ones carry theirs in configs/symbols.tsv)
@@ -98,6 +104,7 @@ GROUP_OF = {
     "NET_TRACE": "Network", "NET_NAMES": "Network", "VIRTIO_NET": "Network",
     "BATTERY_STOP": "Audio and battery", "BATTERY_STOP_POLL": "Audio and battery", "SOCINFO": "Chip, thermal and PMIC", "THERMAL": "Chip, thermal and PMIC", "THERMAL_POLL": "Chip, thermal and PMIC",
     "THERMAL_STOP": "Chip, thermal and PMIC", "PMIC": "Chip, thermal and PMIC", "BOOTARGS": "Extra arguments",
+    "DEFAULT_ARGS": "Extra arguments",
 }
 LAYER_OF = {}
 RELAXED = re.compile(r"[A-Za-z0-9_.,:/+@=\-]+")       # what a text value may hold: no space, no quote, no backslash
@@ -617,7 +624,7 @@ def boot_args(parsed):
     """['cpus=8', 'gpu=1', ...] in the order of the symbol table."""
     args = []
     for name, kind, arg, _help, _needs, _requires in SYMBOLS:
-        if name not in parsed or (arg is None and kind != "args"):
+        if name not in parsed or (arg is None and kind != "args") or name == "DEFAULT_ARGS":
             continue
         value = parsed[name]
         if kind == "args":
@@ -929,11 +936,12 @@ def master_hakios(built, sources):
     return "\n".join(lines) + "\n"
 
 
-def drivers_header(built, sources):
+def drivers_header(built, sources, defaults=()):
     on = [d.name.lower() for d in DRIVERS if built[d.symbol]]
     return ("/* The drivers this kernel is built with: made by tools/hakios-config.py kernel from %s. Not part of the patch. */\n"
-            "#define HAKIOS_DRIVERS_LIST     \"%s\"\n#define HAKIOS_DRIVERS_COUNT    %d\n#define HAKIOS_DRIVERS_CONFIG   \"%s\"\n" %
-            (sources, " ".join(on), len(on), sources))
+            "#define HAKIOS_DRIVERS_LIST     \"%s\"\n#define HAKIOS_DRIVERS_COUNT    %d\n#define HAKIOS_DRIVERS_CONFIG   \"%s\"\n"
+            "#define HAKIOS_DEFAULT_BOOTARGS \"%s\"\n" %
+            (sources, " ".join(on), len(on), sources, " ".join(defaults)))
 
 
 def write_if_changed(path, text):
@@ -1014,7 +1022,7 @@ def cmd_kernel(a):
     choice_changed = write_if_changed(os.path.join(tree, "config", "MASTER.hakios"), master_hakios(built, sources))
     if choice_changed:
         changed.append("config/MASTER.hakios")
-    if write_if_changed(os.path.join(tree, "bsd", "dev", "hakios.drivers.h"), drivers_header(built, sources)):
+    if write_if_changed(os.path.join(tree, "bsd", "dev", "hakios.drivers.h"), drivers_header(built, sources, typed("DEFAULT_ARGS", config["DEFAULT_ARGS"]) if "DEFAULT_ARGS" in config else [])):
         changed.append("bsd/dev/hakios.drivers.h")
     removed = stale_objects(tree) if choice_changed and os.path.isdir(os.path.join(tree, "BUILD", "obj")) else 0
     on = [d.name.lower() for d in DRIVERS if built[d.symbol]]

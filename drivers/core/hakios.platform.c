@@ -56,6 +56,17 @@ LCK_MTX_DECLARE(hakios_smmu_lock, &hakios_platform_lock_group);
 
 static char hakios_drivers_string[] = HAKIOS_DRIVERS_LIST;
 
+/*
+ * The phone's default boot-arguments (CONFIG_DEFAULT_ARGS, tools/hakios-config.py): PE_parse_boot_argn() reads an
+ * argument here when the command line does not have it (pexpert/gen/bootargs.c).
+ */
+#ifndef HAKIOS_DEFAULT_BOOTARGS
+#define HAKIOS_DEFAULT_BOOTARGS ""
+#endif
+const char hakios_default_bootargs[] = HAKIOS_DEFAULT_BOOTARGS;
+SYSCTL_STRING(_kern, OID_AUTO, hakios_default_bootargs, CTLFLAG_RD | CTLFLAG_LOCKED, __DECONST(char *, hakios_default_bootargs), 0,
+    "the kernel's built-in default boot-arguments");
+
 SYSCTL_STRING(_kern_hakios, OID_AUTO, drivers, CTLFLAG_RD | CTLFLAG_LOCKED, hakios_drivers_string, 0,
     "the drivers this kernel was built with (CONFIG_HAKIOS_* of its configuration, lowercase)");
 
