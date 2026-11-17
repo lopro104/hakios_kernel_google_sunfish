@@ -933,6 +933,15 @@ mount_writable(void)
 		for (unsigned i = 0; i < sizeof(own) / sizeof(own[0]); i++) {
 			empty_tree(own[i], 0);
 		}
+		/*
+		 * MobileGestalt's cache is made anew at every boot: it is kept on the volume and trusted as long as the
+		 * system's build is the same, but what this machine has depends on the boot's arguments (torch=N gives
+		 * the camera its flash, and with it Control Center's flashlight), which the cache knows nothing of
+		 */
+		if (unlink("/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/"
+		    "com.apple.MobileGestalt.plist") == 0) {
+			printf("  MobileGestalt's cache of the last boot removed\n");
+		}
 		ok = 1;
 		check(ok, "mount the data volume on /private/var");
 	} else {
