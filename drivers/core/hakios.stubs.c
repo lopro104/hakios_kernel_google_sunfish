@@ -89,7 +89,9 @@ void HakiosWLANStart(__unused const char *interface, __unused const uint8_t *add
 #ifndef HAKIOS_ADSP
 void hakios_adsp_init(void) {}
 void hakios_adsp_stop(void) {}
+#ifndef HAKIOS_ADSP_SM7150             /* the Pixel 4a's audio DSP driver has its own (devices/sunfish/drivers/audio) */
 void hakios_adsp_quiesce(void) {}
+#endif
 #endif
 
 #ifndef HAKIOS_MODEM
