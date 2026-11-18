@@ -261,7 +261,6 @@ static TUNABLE(uint32_t, gMeasure, "fb_measure", 0);
  */
 static TUNABLE(uint32_t, gBeam, "fb_beam", 1);
 
-#ifdef HAKIOS_CMDPANEL
 /*
  * A command-mode panel (the Pixel 4a's) has no timing engine in INTF_1, and that address is another block on its SoC. What says
  * where the panel's scan is, is the tear check of the pingpong block feeding it: Linux's dpu_hw_pp_get_line_count(). Autorefresh
@@ -293,13 +292,6 @@ beamLine(vm_offset_t pp)
 
 	return line < init ? line + (0xffff - init) : line - init;
 }
-#else
-static uint32_t
-beamLine(vm_offset_t intf)
-{
-	return *(volatile uint32_t *)(intf + INTF_LINE_COUNT);
-}
-#endif
 extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 static inline uint32_t refreshHz(void);
 
@@ -997,7 +989,107 @@ IOMobileFramebuffer::beamProbe(void)
 	uint64_t began, ended, until;
 
 	IOSleep(60000);
+	/*
+	 * (Chosen when the kernel is one for the SM7150, by its version: HAKIOS_CMDPANEL is not defined for this file, so an #ifdef
+	 * here never compiled the branch in, logs/210227-run.log.)
+	 */
+	char kver[128] = "";
+
+	if (PE_parse_boot_arg_str("hakios_kver", kver, sizeof(kver)) && strnstr(kver, "-sm7150-", sizeof(kver)) != NULL)
+	/*
+	 * A command-mode panel (the Pixel 4a's): no timing engine to ask; the line is the tear check's of the pingpong block
+	 * that sends the frames (beamLine()). It counts from its vsync start to the panel's height and starts again on each
+	 * tear-effect pulse: half a second of it gives the lines (the largest value) and the period (the times it went back).
+	 * Before this, the probe looked for a video-mode interface, found none on this SoC and left every frame on its beat:
+	 * frames written across the line being sent tore.
+	 */
+	{
+		vm_offset_t page = ml_io_map(PP_PAGE, 0x4000), pp = 0;
+
+		for (unsigned n = 0; page != 0 && n < 4 && pp == 0; n++) {
+			if (*(volatile uint32_t *)(page + PP_FIRST + PP_STRIDE * n + PP_TEAR_CHECK_EN) & 1) {
+				pp = page + PP_FIRST + PP_STRIDE * n;
+			}
+		}
+		if (pp == 0) {
+			/*
+			 * Booted through U-Boot no pingpong does tear checks: the panel is fed by the DSI interface's own timing
+			 * engine, INTF_1 at this SoC's address, which has the frame and line counters the video-mode path below reads.
+			 */
+			/* which one: each of the four (Linux's dpu_5_2_sm7150.h: MDP + 0x6a000, 0x800 apart) said, the one whose frames count taken */
+			vm_offset_t intf_page = ml_io_map(SM7150_INTF_PAGE, 0x8000);
+
+			intf = 0;
+			for (unsigned n = 0; intf_page != 0 && n < 4; n++) {
+				vm_offset_t candidate = intf_page + 0x3000 + 0x800 * n;
+				uint32_t en = *(volatile uint32_t *)(candidate + INTF_TIMING_ENGINE_EN);
+				uint32_t f0 = *(volatile uint32_t *)(candidate + INTF_FRAME_COUNT);
+
+				IODelay(40000);
+				uint32_t f1 = *(volatile uint32_t *)(candidate + INTF_FRAME_COUNT);
+
+				IOLog("MiniIOMobileFramebuffer: fb_beam: INTF_%u: timing engine %#x, frames %u in 40 ms, line %u\n", n, en, f1 - f0,
+				    *(volatile uint32_t *)(candidate + INTF_LINE_COUNT));
+				if (intf == 0 && (en & 1) && f1 != f0) {
+					intf = candidate;
+				}
+			}
+			IOLog("MiniIOMobileFramebuffer: fb_beam: no pingpong does tear checks: %s\n", intf != 0 ? "an interface whose frames count taken" :
+			    "no interface counts frames either");
+			if (intf == 0) {
+				/* what the display block says of itself (reads only): MDSS and MDP versions, CTL_0, SSPP0's buffer, DSI0's mode */
+				vm_offset_t mdss = ml_io_map(0x0ae00000UL, 0x8000), dsi = ml_io_map(0x0ae94000UL, 0x1000);
+
+				if (mdss != 0 && dsi != 0) {
+					IOLog("MiniIOMobileFramebuffer: fb_beam: MDSS hw %#x, MDP rev %#x; CTL_0 layer %#x top %#x flush %#x start %#x; "
+					    "SSPP0 src0 %#x size %#x; DSI0 ctrl %#x, cmd mode %#x\n",
+					    *(volatile uint32_t *)(mdss + 0x0), *(volatile uint32_t *)(mdss + 0x1000),
+					    *(volatile uint32_t *)(mdss + 0x2000 + 0x0), *(volatile uint32_t *)(mdss + 0x2000 + 0x14),
+					    *(volatile uint32_t *)(mdss + 0x2000 + 0x18), *(volatile uint32_t *)(mdss + 0x2000 + 0x1c),
+					    *(volatile uint32_t *)(mdss + 0x5000 + 0x14), *(volatile uint32_t *)(mdss + 0x5000 + 0x0),
+					    *(volatile uint32_t *)(dsi + 0x4), *(volatile uint32_t *)(dsi + 0x40));
+				}
+			}
+			goto video_mode;
+		}
+		gBeamTearCheck = true;
+		uint32_t last = beamLine(pp), wraps = 0;
+
+		began = mach_absolute_time();
+		ended = began;
+		nanoseconds_to_absolutetime(500 * NSEC_PER_MSEC, &until);
+		until += began;
+		while (mach_absolute_time() < until) {
+			line = beamLine(pp);
+			if (line + 64 < last) {         /* back to the top: a new scan */
+				if (wraps == 0) {
+					began = mach_absolute_time();
+				}
+				wraps++;
+				ended = mach_absolute_time();
+			}
+			lines = line > lines ? line : lines;
+			smallest = line < smallest ? line : smallest;
+			last = line;
+		}
+		frames = wraps > 0 ? wraps - 1 : 0;
+		if (frames < 10 || lines < fPanelHeight || lines > fPanelHeight * 2) {
+			gBeamTearCheck = false;
+			IOLog("MiniIOMobileFramebuffer: fb_beam: the pingpong's line does not count as it should (%u scans, lines %u to %u): "
+			    "frames stay on their beat\n", frames, smallest, lines);
+			return;
+		}
+		fBeamLines = lines + 1;
+		fBeamPeriod = (ended - began) / frames;
+		absolutetime_to_nanoseconds(fBeamPeriod, &began);
+		IOLog("MiniIOMobileFramebuffer: fb_beam: the pingpong's tear check: a scan is %u lines, %llu us: frames are written "
+		    "behind it from now on\n", fBeamLines, began / NSEC_PER_USEC);
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		fBeamIntf = pp;
+		return;
+	}
 	intf = panelInterface();
+video_mode:
 	if (intf == 0) {
 		IOLog("MiniIOMobileFramebuffer: fb_beam: no display interface known for this SoC (fb_intf=): frames stay on their beat\n");
 		return;
