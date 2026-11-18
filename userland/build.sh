@@ -274,6 +274,9 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			$DYN -dynamiclib -install_name /redwood/lib/libhakios.bluetooth.dylib -framework CoreFoundation -framework IOKit -lobjc \
 				-o obj/libhakios.bluetooth.dylib src/inject_bluetooth.c
 			$DYN -fblocks -framework CoreFoundation -framework IOKit -o obj/umi_bluetool src/umi_bluetool.c
+			# the name Bluetooth Settings shows ("discoverable as ..."), read through SCDynamicStoreCopyComputerName,
+			# which nothing else here sets (src/scname.c, also from hakios-thyme)
+			$DYN -framework CoreFoundation -framework SystemConfiguration -o obj/scname src/scname.c
 		fi
 		$DYN -O2 -dynamiclib -install_name /redwood/lib/libhakios.media.dylib -framework CoreFoundation -framework CoreMedia \
 			-framework CoreVideo -framework IOSurface -lobjc \
@@ -406,8 +409,9 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	if [ "${BLUETOOTH-0}" = 1 ]; then
 		[ -f obj/libhakios.bluetooth.dylib ] && cp obj/libhakios.bluetooth.dylib root/lib/
 		[ -f obj/umi_bluetool ] && cp obj/umi_bluetool root/bin/
+		[ -f obj/scname ] && cp obj/scname root/bin/
 	else
-		rm -f root/lib/libhakios.bluetooth.dylib root/bin/umi_bluetool
+		rm -f root/lib/libhakios.bluetooth.dylib root/bin/umi_bluetool root/bin/scname
 	fi
 	# EXTRA_APPS: a directory of application bundles to show on the home screen of a flash-root boot (src/init.c, flash_root binds each
 	# one of /apps on a synthetic /Applications entry of the Darwin volume)
@@ -507,6 +511,19 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	# fairplayd among them).
 	cp com.hakios.demo.plist com.hakios.wifi.plist root/LaunchDaemons/
 	cp com.hakios.bootd.plist root/LaunchDaemons/
+	# the device's name for Bluetooth (BLUETOOTH=1; BT_NAME="...", "HakiOS" when not given): set once at load by scname
+	rm -f root/LaunchDaemons/com.hakios.scname.plist
+	if [ "${BLUETOOTH-0}" = 1 ] && [ -f root/bin/scname ]; then
+		python3 - "${BT_NAME:-HakiOS}" root/LaunchDaemons/com.hakios.scname.plist <<'PLIST'
+import plistlib, sys
+name, path = sys.argv[1], sys.argv[2]
+job = {"Label": "com.hakios.scname", "ProgramArguments": ["/redwood/bin/scname"] + name.split(), "RunAtLoad": True,
+       "KeepAlive": {"SuccessfulExit": False}, "ThrottleInterval": 5,
+       "StandardOutPath": "/dev/console", "StandardErrorPath": "/dev/console"}
+with open(path, "wb") as f:
+    plistlib.dump(job, f, fmt=plistlib.FMT_BINARY)
+PLIST
+	fi
 	VOLUME=""
 	[ -n "$FLASHBOOT" ] && [ -f $DARWIN/rootfs.slt ] && VOLUME="--root-volume $DARWIN/rootfs.slt"
 	[ -n "$DARWIN_JOBS" ] && OSLOG=${OSLOG-com.apple.backboardd} ./mkjobs.py ${REST:+--rest} $VOLUME $DARWIN/rootfs root/LaunchDaemons $DARWIN_JOBS
