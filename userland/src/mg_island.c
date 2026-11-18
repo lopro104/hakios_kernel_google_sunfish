@@ -22,7 +22,7 @@ extern int proc_name(int pid, void *buffer, uint32_t buffersize);
 int
 main(int argc, char **argv)
 {
-	int subtype = argc > 1 ? atoi(argv[1]) : 2556;
+	int subtype = argc > 1 ? (strchr(argv[1], '=') != NULL ? 0 : atoi(argv[1])) : 2556;
 	CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)CACHE, sizeof(CACHE) - 1, false);
 	CFReadStreamRef in = CFReadStreamCreateWithFile(NULL, url);
 	CFPropertyListRef cache = NULL;
@@ -43,6 +43,27 @@ main(int argc, char **argv)
 		return 1;
 	}
 	CFMutableDictionaryRef extra = (CFMutableDictionaryRef)CFDictionaryGetValue(cache, CFSTR("CacheExtra"));
+	/* KEY=N arguments: CacheExtra's KEY (an obfuscated MobileGestalt key) set to N (0 and 1 as booleans) */
+	int keys = 0;
+
+	for (int i = 1; i < argc && extra != NULL; i++) {
+		char *equals = strchr(argv[i], '=');
+
+		if (equals == NULL) {
+			continue;
+		}
+		*equals = 0;
+		CFStringRef key = CFStringCreateWithCString(NULL, argv[i], kCFStringEncodingUTF8);
+		int value = atoi(equals + 1);
+		CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &value);
+
+		CFDictionarySetValue(extra, key, value == 0 || value == 1 ? (CFTypeRef)(value ? kCFBooleanTrue : kCFBooleanFalse) :
+		    (CFTypeRef)number);
+		printf("mg_island: %s = %d in MobileGestalt's cache\n", argv[i], value);
+		CFRelease(number);
+		CFRelease(key);
+		keys++;
+	}
 	CFMutableDictionaryRef traits = extra != NULL ? (CFMutableDictionaryRef)CFDictionaryGetValue(extra,
 	    CFSTR("oPeik/9e8lQWMszEjbPzng")) : NULL;
 
@@ -56,10 +77,12 @@ main(int argc, char **argv)
 	if (was != NULL) {
 		CFNumberGetValue(was, kCFNumberIntType, &old);
 	}
-	CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &subtype);
+	if (subtype != 0) {
+		CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &subtype);
 
-	CFDictionarySetValue(traits, CFSTR("ArtworkDeviceSubType"), number);
-	CFRelease(number);
+		CFDictionarySetValue(traits, CFSTR("ArtworkDeviceSubType"), number);
+		CFRelease(number);
+	}
 	CFErrorRef error = NULL;
 	CFDataRef data = CFPropertyListCreateData(NULL, cache, kCFPropertyListBinaryFormat_v1_0, 0, &error);
 	FILE *out = data != NULL ? fopen(CACHE ".new", "wb") : NULL;
@@ -69,7 +92,10 @@ main(int argc, char **argv)
 		printf("mg_island: could not write the cache\n");
 		return 1;
 	}
-	printf("mg_island: ArtworkDeviceSubType %d -> %d in MobileGestalt's cache\n", old, subtype);
+	if (subtype != 0) {
+		printf("mg_island: ArtworkDeviceSubType %d -> %d in MobileGestalt's cache\n", old, subtype);
+	}
+	(void)keys;
 	/* SpringBoard read the old answer when it started: it is stopped, and launchd starts it again */
 	int pids[2048], count = proc_listallpids(pids, sizeof(pids));
 

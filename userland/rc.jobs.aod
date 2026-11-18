@@ -1,0 +1,6 @@
+# Commands run by the launchd job com.hakios.demo: the always-on display as the 16.x tweaks turn it on, two answers in
+# MobileGestalt's cache (src/mg_island.c), SpringBoard restarted; then what the backlight and the lock screen do.
+sleep 30
+/redwood/bin/mg_island 2OOJf1VhaM7NxfRok3HbWQ=1 j8/Omm6s1lsmTDFsXjsBfA=1
+sleep 20
+/redwood/bin/mg_test 2OOJf1VhaM7NxfRok3HbWQ j8/Omm6s1lsmTDFsXjsBfA
