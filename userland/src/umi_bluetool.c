@@ -58,8 +58,11 @@ static void request(xpc_connection_t peer,xpc_object_t message)
     int result=ENOTSUP;
     /* Firmware and NVM initialization were both completed by XNU before launchd. */
     if(command && script && !strcmp(command,"RunBuiltinScript") &&
-        (!strcmp(script,"boot") || !strcmp(script,"init")))
-        result=controller_ready();
+        (!strcmp(script,"boot") || !strcmp(script,"init"))) {
+        /* (the Pixel 4a, HakiOS: wait for the kernel's controller, up to a minute, rather than answer "not ready": on
+         * that answer bluetoothd exits, and SpringBoard, attaching meanwhile, gave up and showed Bluetooth off) */
+        for(int tries=0;tries<240 && (result=controller_ready())!=0;tries++) usleep(250000);
+    }
     fprintf(stderr,"UMI BlueTool: command=%.48s script=%.48s result=%d\n",
         command?command:"(missing)",script?script:"(missing)",result);
     xpc_dictionary_set_int64(reply,"result",result);

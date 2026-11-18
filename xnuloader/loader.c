@@ -1880,6 +1880,94 @@ hc_init(void)
 }
 
 /*
+ * The phone's own Bluetooth address, as its bootloader gives it to Android: "androidboot.btmacaddr=AA:BB:CC:DD:EE:FF" on
+ * the command line in /chosen/bootargs of the device tree that ABL hands over (and U-Boot passes on as the EFI table
+ * b1b621d5-...). True and the six bytes (in the order written) when it is there. The address is never printed.
+ */
+static int starts_with(const char *s, const char *prefix);
+static size_t str_len(const char *s);
+
+static uint32_t
+be32_at(const uint8_t *p)
+{
+	return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+}
+
+static int
+abl_bt_address(uint8_t out[6])
+{
+	const uint8_t *fdt = NULL;
+
+	for (uint64_t i = 0; ST->tables != NULL && i < ST->nr_tables && i < 32; i++) {
+		const efi_guid *g = &ST->tables[i].guid;
+
+		if (g->a == 0xb1b621d5u && g->b == 0xf19c && g->c == 0x41a5 && g->d[0] == 0x83 && g->d[1] == 0x0b && g->d[7] == 0xe0) {
+			fdt = (const uint8_t *)ST->tables[i].table;
+		}
+	}
+	if (fdt == NULL || be32_at(fdt) != 0xd00dfeedu) {
+		return 0;
+	}
+	uint32_t total = be32_at(fdt + 4), off_struct = be32_at(fdt + 8), off_strings = be32_at(fdt + 12);
+	const uint8_t *p = fdt + off_struct, *end = fdt + total;
+	int depth = 0, in_chosen = 0;
+
+	while (p + 4 <= end) {
+		uint32_t token = be32_at(p);
+
+		p += 4;
+		if (token == 1) {                       /* BEGIN_NODE: a name, padded to 4 */
+			const char *name = (const char *)p;
+			uint64_t len = str_len(name);
+
+			depth++;
+			in_chosen = depth == 2 && len == 6 && starts_with(name, "chosen");
+			p += (len + 1 + 3) & ~3ull;
+		} else if (token == 2) {                /* END_NODE */
+			if (depth == 2) {
+				in_chosen = 0;
+			}
+			depth--;
+		} else if (token == 3) {                /* PROP: length, name offset, value */
+			uint32_t len = be32_at(p), nameoff = be32_at(p + 4);
+			const char *value = (const char *)p + 8, *name = (const char *)fdt + off_strings + nameoff;
+
+			if (in_chosen && starts_with(name, "bootargs") && name[8] == 0) {
+				static const char key[] = "androidboot.btmacaddr=";
+
+				for (uint32_t k = 0; k + sizeof(key) - 1 + 17 <= len; k++) {
+					if ((k == 0 || value[k - 1] == ' ') && starts_with(value + k, key)) {
+						const char *a = value + k + sizeof(key) - 1;
+						int ok = 1;
+
+						for (int b = 0; b < 6 && ok; b++) {
+							int hi = a[3 * b], lo = a[3 * b + 1], v = 0;
+
+							for (int t = 0; t < 2; t++) {
+								int c = t == 0 ? hi : lo, d = c >= '0' && c <= '9' ? c - '0' : (c | 0x20) >= 'a' &&
+								    (c | 0x20) <= 'f' ? (c | 0x20) - 'a' + 10 : -1;
+
+								ok = ok && d >= 0;
+								v = v << 4 | (d & 15);
+							}
+							ok = ok && (b == 5 || a[3 * b + 2] == ':');
+							out[b] = (uint8_t)v;
+						}
+						return ok;
+					}
+				}
+				return 0;
+			}
+			p += 8 + ((len + 3) & ~3u);
+		} else if (token == 4) {                /* NOP */
+		} else {
+			break;                          /* END, or something not understood */
+		}
+	}
+	return 0;
+}
+
+/*
  * The firmware's configuration tables, by GUID (an ACPI or device tree table among them would say
  * where the storage controller is).
  */
@@ -3297,6 +3385,20 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	dt_prop_u32(&w, "board-id", 0x06);
 	dt_prop(&w, "mac-address-wifi0", wifi_address, sizeof(wifi_address));
 	dt_prop(&w, "mac-address-bluetooth0", bluetooth_address, sizeof(bluetooth_address));
+	/*
+	 * ... and, apart from that one (which MobileGestalt makes the device's identifier from, so it stays as it was), the
+	 * phone's real Bluetooth address when its bootloader gave one, for the kernel's Bluetooth driver (never printed)
+	 */
+	{
+		uint8_t bt_real[6];
+
+		if (abl_bt_address(bt_real)) {
+			dt_prop(&w, "hakios-bluetooth-address", bt_real, sizeof(bt_real));
+			print("bluetooth: the phone's own address from the bootloader's command line: passed on\n");
+		} else {
+			print("bluetooth: no address on the bootloader's command line\n");
+		}
+	}
 	dt_prop(&w, "boot-manifest-hash", manifest_hash, sizeof(manifest_hash));
 	dt_prop(&w, "software-behavior", no_behavior, sizeof(no_behavior));
 	dt_prop_str(&w, "firmware-version", "iBoot-8422.100.650");
