@@ -197,8 +197,30 @@ flash_root(const char *dev)
 	    bind_dir(in_image("/empty"), "/flash/System/Library/NanoLaunchDaemons") &&
 	    bind_dir(in_image("/empty"), "/flash/System/Library/LaunchAngels") &&
 	    bind_dir(in_image("/xpc"), "/flash/System/Library/xpc"), "our launchd jobs, not Darwin's");
+	/*
+	 * Apple's Bluetooth audio plug-in (the A2DP and hands-free outputs) kept among ours: our directory hides Apple's, and
+	 * without this one a Bluetooth speaker connected but iOS never offered it as an output (bluetoothd: "unable to sendMsg
+	 * due to no available xpc client connections"). A bind does not carry the mounts inside what it binds, so a plug-in
+	 * bound inside our directory showed as an empty one ("HALS_UCPlugIn: failed to find a bundle ID"): the volume's own
+	 * goes onto /btaudio of the image first, while it can still be seen, and from there onto its place in our directory once
+	 * that is mounted. (Found by the Mi 10S port, hakios-thyme, which copies the driver in instead.)
+	 */
+	int bt_audio = 0;
+	{
+		struct stat bt_st;
+		char spare[256];
+
+		strcpy(spare, in_image("/btaudio"));
+		if (stat(spare, &bt_st) == 0 && stat("/flash/System/Library/Audio/Plug-Ins/HAL/BTAudioHALPlugin.driver", &bt_st) == 0) {
+			bt_audio = bind_dir("/flash/System/Library/Audio/Plug-Ins/HAL/BTAudioHALPlugin.driver", spare);
+		}
+	}
 	check(bind_dir(in_image("/hal"), "/flash/System/Library/Audio/Plug-Ins/HAL"),
 	    "our audio device, not Apple's plug-ins");
+	if (bt_audio) {
+		check(bind_dir(in_image("/btaudio"), "/flash/System/Library/Audio/Plug-Ins/HAL/BTAudioHALPlugin.driver"),
+		    "Apple's Bluetooth audio plug-in kept beside ours");
+	}
 	if (stat("/fw", &fw_st) == 0) {
 		/* the audio DSP's firmware and the speakers' configuration, from the RAM image as in a RAM boot */
 		check(synthetic_dir("/flash/fw") && bind_dir("/fw", "/flash/fw"), "the firmware on /fw (adsp=1, sound=N)");
