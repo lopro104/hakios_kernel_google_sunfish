@@ -1893,9 +1893,10 @@ hc_init(void)
 }
 
 /*
- * The phone's own Bluetooth address, as its bootloader gives it to Android: "androidboot.btmacaddr=AA:BB:CC:DD:EE:FF" on
- * the command line in /chosen/bootargs of the device tree that ABL hands over (and U-Boot passes on as the EFI table
- * b1b621d5-...). True and the six bytes (in the order written) when it is there. The address is never printed.
+ * One of the phone's own addresses, as its bootloader gives them to Android: CDB2_NAME in /chosen/cdt/cdb2 (bt_addr,
+ * wlan_mac1: the Pixel 4a's ABL), or CMDLINE_KEY (e.g. "androidboot.btmacaddr=") on the command line in /chosen/bootargs,
+ * of the device tree that ABL hands over (U-Boot passes it on as the EFI table b1b621d5-..., the cdt part copied in by
+ * devices/sunfish's U-Boot). True and the six bytes (in the order written) when it is there. Never printed.
  */
 static int starts_with(const char *s, const char *prefix);
 static size_t str_len(const char *s);
@@ -1907,7 +1908,7 @@ be32_at(const uint8_t *p)
 }
 
 static int
-abl_bt_address(uint8_t out[6])
+abl_address(const char *cdb2_name, const char *cmdline_key, uint8_t out[6])
 {
 	const uint8_t *fdt = NULL;
 
@@ -1959,7 +1960,7 @@ abl_bt_address(uint8_t out[6])
 			 * The Pixel 4a's ABL keeps it in its configuration data: /chosen/cdt/cdb2/bt_addr, the text
 			 * "AA:BB:CC:DD:EE:FF" (found by the user in Android's /proc/device-tree)
 			 */
-			if (in_cdb2 && depth == 4 && starts_with(name, "bt_addr") && name[7] == 0 && len >= 17) {
+			if (in_cdb2 && depth == 4 && starts_with(name, cdb2_name) && name[str_len(cdb2_name)] == 0 && len >= 17) {
 				int ok = 1;
 
 				for (int b = 0; b < 6 && ok; b++) {
@@ -1979,12 +1980,13 @@ abl_bt_address(uint8_t out[6])
 					return 1;
 				}
 			}
-			if (in_chosen && depth == 2 && starts_with(name, "bootargs") && name[8] == 0) {
-				static const char key[] = "androidboot.btmacaddr=";
+			if (cmdline_key != NULL && in_chosen && depth == 2 && starts_with(name, "bootargs") && name[8] == 0) {
+				const char *key = cmdline_key;
+				uint32_t key_len = (uint32_t)str_len(key);
 
-				for (uint32_t k = 0; k + sizeof(key) - 1 + 17 <= len; k++) {
+				for (uint32_t k = 0; k + key_len + 17 <= len; k++) {
 					if ((k == 0 || value[k - 1] == ' ') && starts_with(value + k, key)) {
-						const char *a = value + k + sizeof(key) - 1;
+						const char *a = value + k + key_len;
 						int ok = 1;
 
 						for (int b = 0; b < 6 && ok; b++) {
@@ -3457,11 +3459,16 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	{
 		uint8_t bt_real[6];
 
-		if (abl_bt_address(bt_real)) {
+		if (abl_address("bt_addr", "androidboot.btmacaddr=", bt_real)) {
 			dt_prop(&w, "hakios-bluetooth-address", bt_real, sizeof(bt_real));
 			print("bluetooth: the phone's own address from the bootloader (its configuration data, or the command line): passed on\n");
 		} else {
 			print("bluetooth: no address from the bootloader\n");
+		}
+		/* and its Wi-Fi address, for the kernel's Wi-Fi driver (it had a made-up one, the same in every build) */
+		if (abl_address("wlan_mac1", NULL, bt_real)) {
+			dt_prop(&w, "hakios-wlan-address", bt_real, sizeof(bt_real));
+			print("wi-fi: the phone's own address from the bootloader: passed on\n");
 		}
 	}
 	dt_prop(&w, "boot-manifest-hash", manifest_hash, sizeof(manifest_hash));
