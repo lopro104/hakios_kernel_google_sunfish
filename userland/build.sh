@@ -124,6 +124,10 @@ DARWIN_JOBS=${JOBS-"
 # (Count a QEMU run log with its duplicate lines removed: run-darwin.sh prints launchd's log twice.)
 # WIFID=0 leaves it out.
 [ "${WIFID-1}" != 0 ] && DARWIN_JOBS="$DARWIN_JOBS com.apple.wifid"
+# Bluetooth's jobs (BLUETOOTH=1; mkjobs.py's --rest leaves every Bluetooth name out, so they are named here). BlueTool
+# becomes /redwood/bin/umi_bluetool in mkjobs.py: the kernel has already started the controller, and stock BlueTool's
+# Broadcom scripts would only take it down. (From the Mi 10S port, hakios-thyme.)
+[ "${BLUETOOTH-0}" != 1 ] || DARWIN_JOBS="$DARWIN_JOBS com.apple.bluetoothd com.apple.BlueTool com.apple.BTServer.le com.apple.BTServer.avrcp com.apple.BTServer.map com.apple.BTServer.pbap com.apple.bluetoothuserd"
 # The programs (file names) started with a library of ours inside them: "LIBRARY NAME..." per line
 # (src/inject.c is libhakios.dylib, src/inject_sb.c is libhakios.sb.dylib, src/inject_media.c is
 # libhakios.media.dylib).
@@ -139,6 +143,12 @@ INJECT=${INJECT-"/redwood/lib/libhakios.dylib backboardd containermanagerd conta
 /redwood/lib/libhakios.app.dylib Sileo
 /redwood/lib/libhakios.ci.dylib MobileSafari
 /redwood/lib/libhakios.tweaks.dylib Preferences"}
+# Bluetooth (BLUETOOTH=1, a phone whose kernel gives bluetoothd its controller: bt=5 on the Pixel 4a): bluetoothd gets the
+# library that fits Apple's init sequence to a QCA controller (src/inject_bluetooth.c, from the Mi 10S port hakios-thyme)
+if [ "${BLUETOOTH-0}" = 1 ]; then
+	INJECT="$INJECT
+/redwood/lib/libhakios.bluetooth.dylib bluetoothd"
+fi
 mkdir -p obj
 
 if [ -z "$PREBUILT" ] && ! command -v ld64 >/dev/null; then PREBUILT=1; fi
@@ -259,6 +269,12 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			-o obj/libhakios.app.dylib src/inject_app.c
 		$DYN -dynamiclib -install_name /redwood/lib/libhakios.ci.dylib -lobjc -framework CoreFoundation \
 			-o obj/libhakios.ci.dylib src/inject_ci.c
+		# Bluetooth (BLUETOOTH=1): bluetoothd's library and the BlueTool stand-in (src/inject_bluetooth.c, src/umi_bluetool.c)
+		if [ "${BLUETOOTH-0}" = 1 ]; then
+			$DYN -dynamiclib -install_name /redwood/lib/libhakios.bluetooth.dylib -framework CoreFoundation -framework IOKit -lobjc \
+				-o obj/libhakios.bluetooth.dylib src/inject_bluetooth.c
+			$DYN -fblocks -framework CoreFoundation -framework IOKit -o obj/umi_bluetool src/umi_bluetool.c
+		fi
 		$DYN -O2 -dynamiclib -install_name /redwood/lib/libhakios.media.dylib -framework CoreFoundation -framework CoreMedia \
 			-framework CoreVideo -framework IOSurface -lobjc \
 			-o obj/libhakios.media.dylib src/inject_media.c src/camera_device.c src/camera_isp.c
@@ -387,6 +403,12 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	[ -f obj/libhakios.media.dylib ] && cp obj/libhakios.media.dylib root/lib/     # (as with cpu_test)
 	[ -f obj/libhakios.app.dylib ] && cp obj/libhakios.app.dylib root/lib/
 	[ -f obj/libhakios.ci.dylib ] && cp obj/libhakios.ci.dylib root/lib/
+	if [ "${BLUETOOTH-0}" = 1 ]; then
+		[ -f obj/libhakios.bluetooth.dylib ] && cp obj/libhakios.bluetooth.dylib root/lib/
+		[ -f obj/umi_bluetool ] && cp obj/umi_bluetool root/bin/
+	else
+		rm -f root/lib/libhakios.bluetooth.dylib root/bin/umi_bluetool
+	fi
 	# EXTRA_APPS: a directory of application bundles to show on the home screen of a flash-root boot (src/init.c, flash_root binds each
 	# one of /apps on a synthetic /Applications entry of the Darwin volume)
 	rm -rf root/apps; mkdir -p root/apps

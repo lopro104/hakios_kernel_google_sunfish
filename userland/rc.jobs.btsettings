@@ -1,0 +1,6 @@
+# Commands run by the launchd job com.hakios.demo (see com.hakios.demo.plist).
+# Bluetooth in Settings (with BLUETOOTH=1 and the kernel's bt=5): the springboard settled, then Settings opened on its
+# Bluetooth page, to be looked at (xl screenshot) while the run goes on.
+/redwood/bin/sound_test springboard wait 20
+/redwood/bin/battery_test open prefs:root=Bluetooth
+/redwood/bin/rwtouch wait 60

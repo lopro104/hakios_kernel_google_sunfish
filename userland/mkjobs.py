@@ -265,6 +265,30 @@ def present(program):
     return os.path.isfile(f'{src_root}{program}')
 
 
+def tune_bluetooth(label, job):
+    """Bluetooth's two jobs, when the kernel gives bluetoothd a controller (BLUETOOTH=1; from the Mi 10S port, hakios-thyme).
+
+    bluetoothd: its HCI transport is the kernel control com.hakios.bluetooth, H4 at the speed the kernel runs the link
+    at (BT_BAUDRATE, 3000000 on the Pixel 4a). BlueTool: the kernel has already started the controller, so the job runs
+    /redwood/bin/umi_bluetool, which answers BlueTool's boot contract from the controller's state, at load and kept
+    alive (bluetoothd asks for it early, and an on-demand start lost that race).
+    """
+    if label == "com.apple.bluetoothd":
+        speed = os.environ.get("BT_BAUDRATE", "3000000")
+        job.setdefault("EnvironmentVariables", {}).update(BT_HCI_TRANSPORT=f"H4:POSIX:com.hakios.bluetooth,{speed}",
+                                                          BT_BAUDRATE=speed)
+    if label == "com.apple.BlueTool" and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(dest)), "bin",
+                                                                      "umi_bluetool")):
+        job.pop("Program", None)
+        for key in ("POSIXSpawnType", "EnablePressuredExit", "ThrottleInterval"):
+            job.pop(key, None)
+        job["Label"] = "com.hakios.bluetool"
+        job["ProcessType"] = "Interactive"
+        job["ProgramArguments"] = ["/redwood/bin/umi_bluetool"]
+        job["RunAtLoad"] = True
+        job["KeepAlive"] = {"SuccessfulExit": False}
+
+
 angels = f'{src_root}/System/Library/LaunchAngels'
 os.makedirs(dest, exist_ok=True)
 labels = [label for label in labels if not any(word in label for word in DENY_MORE)]
@@ -275,6 +299,7 @@ for label in labels:
     # a job that is named is wanted, whatever hardware it says it is for: wifid's asks for a node "wlan" in the
     # device tree, which the loader's tree does not have yet
     job.pop('_LimitLoadToDeviceTree', None)
+    tune_bluetooth(label, job)
     if 'all' in oslog or label in oslog:
         job.setdefault('EnvironmentVariables', {})['OS_ACTIVITY_DT_MODE'] = 'YES'
     with open(f'{dest}/{label}.plist', 'wb') as f:
