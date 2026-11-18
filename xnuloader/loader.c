@@ -1910,7 +1910,7 @@ abl_bt_address(uint8_t out[6])
 	}
 	uint32_t total = be32_at(fdt + 4), off_struct = be32_at(fdt + 8), off_strings = be32_at(fdt + 12);
 	const uint8_t *p = fdt + off_struct, *end = fdt + total;
-	int depth = 0, in_chosen = 0;
+	int depth = 0, in_chosen = 0, in_cdt = 0, in_cdb2 = 0;
 
 	while (p + 4 <= end) {
 		uint32_t token = be32_at(p);
@@ -1921,18 +1921,52 @@ abl_bt_address(uint8_t out[6])
 			uint64_t len = str_len(name);
 
 			depth++;
-			in_chosen = depth == 2 && len == 6 && starts_with(name, "chosen");
+			if (depth == 2) {
+				in_chosen = len == 6 && starts_with(name, "chosen");
+			} else if (depth == 3) {
+				in_cdt = in_chosen && len == 3 && starts_with(name, "cdt");
+			} else if (depth == 4) {
+				in_cdb2 = in_cdt && len == 4 && starts_with(name, "cdb2");
+			}
 			p += (len + 1 + 3) & ~3ull;
 		} else if (token == 2) {                /* END_NODE */
 			if (depth == 2) {
 				in_chosen = 0;
+			} else if (depth == 3) {
+				in_cdt = 0;
+			} else if (depth == 4) {
+				in_cdb2 = 0;
 			}
 			depth--;
 		} else if (token == 3) {                /* PROP: length, name offset, value */
 			uint32_t len = be32_at(p), nameoff = be32_at(p + 4);
 			const char *value = (const char *)p + 8, *name = (const char *)fdt + off_strings + nameoff;
 
-			if (in_chosen && starts_with(name, "bootargs") && name[8] == 0) {
+			/*
+			 * The Pixel 4a's ABL keeps it in its configuration data: /chosen/cdt/cdb2/bt_addr, the text
+			 * "AA:BB:CC:DD:EE:FF" (found by the user in Android's /proc/device-tree)
+			 */
+			if (in_cdb2 && depth == 4 && starts_with(name, "bt_addr") && name[7] == 0 && len >= 17) {
+				int ok = 1;
+
+				for (int b = 0; b < 6 && ok; b++) {
+					int v = 0;
+
+					for (int t = 0; t < 2; t++) {
+						int c = value[3 * b + t], d = c >= '0' && c <= '9' ? c - '0' : (c | 0x20) >= 'a' &&
+						    (c | 0x20) <= 'f' ? (c | 0x20) - 'a' + 10 : -1;
+
+						ok = ok && d >= 0;
+						v = v << 4 | (d & 15);
+					}
+					ok = ok && (b == 5 || value[3 * b + 2] == ':');
+					out[b] = (uint8_t)v;
+				}
+				if (ok) {
+					return 1;
+				}
+			}
+			if (in_chosen && depth == 2 && starts_with(name, "bootargs") && name[8] == 0) {
 				static const char key[] = "androidboot.btmacaddr=";
 
 				for (uint32_t k = 0; k + sizeof(key) - 1 + 17 <= len; k++) {
@@ -1953,10 +1987,11 @@ abl_bt_address(uint8_t out[6])
 							ok = ok && (b == 5 || a[3 * b + 2] == ':');
 							out[b] = (uint8_t)v;
 						}
-						return ok;
+						if (ok) {
+							return 1;
+						}
 					}
 				}
-				return 0;
 			}
 			p += 8 + ((len + 3) & ~3u);
 		} else if (token == 4) {                /* NOP */
@@ -3394,9 +3429,9 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 
 		if (abl_bt_address(bt_real)) {
 			dt_prop(&w, "hakios-bluetooth-address", bt_real, sizeof(bt_real));
-			print("bluetooth: the phone's own address from the bootloader's command line: passed on\n");
+			print("bluetooth: the phone's own address from the bootloader (its configuration data, or the command line): passed on\n");
 		} else {
-			print("bluetooth: no address on the bootloader's command line\n");
+			print("bluetooth: no address from the bootloader\n");
 		}
 	}
 	dt_prop(&w, "boot-manifest-hash", manifest_hash, sizeof(manifest_hash));
