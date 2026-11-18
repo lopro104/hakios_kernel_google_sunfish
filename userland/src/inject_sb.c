@@ -1372,7 +1372,9 @@ status_bar_fallback_is_split(void)
 	if (sysctlbyname("kern.bootargs", args, &size, NULL, 0) == 0 && (at = strstr(args, "fbwidth=")) != NULL) {
 		width = (unsigned)atoi(at + 8);
 	}
-	status_bar_split = objc_getClass(width == 1080 ? "_UIStatusBarVisualProvider_Split1080" : "_UIStatusBarVisualProvider_Split1125");
+	/* island=1 (the iPhone 14 Pro's artwork subtype, xnuloader): its status bar, the one split around the Dynamic Island */
+	status_bar_split = objc_getClass(strstr(args, "island=") != NULL ? "_UIStatusBarVisualProvider_DynamicSplit" :
+	    width == 1080 ? "_UIStatusBarVisualProvider_Split1080" : "_UIStatusBarVisualProvider_Split1125");
 	if (fallback == NULL || status_bar_split == NULL) {
 		say("hakios: SpringBoard: no status bar fallback or split provider class (%p %p)\n", (void *)fallback, (void *)status_bar_split);
 		return;

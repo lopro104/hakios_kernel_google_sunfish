@@ -1,0 +1,7 @@
+# Commands run by the launchd job com.hakios.demo: the Dynamic Island as the 16.x tweaks make it, one answer in
+# MobileGestalt's cache (src/mg_island.c), then what MobileGestalt answers.
+/redwood/bin/mg_test HomeButtonType main-screen-class DeviceCornerRadius
+sleep 30
+/redwood/bin/mg_island 2556
+sleep 20
+/redwood/bin/mg_test ArtworkDeviceSubType main-screen-class HomeButtonType DeviceCornerRadius

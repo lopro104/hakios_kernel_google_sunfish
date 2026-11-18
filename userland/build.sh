@@ -214,6 +214,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 		$DYN -o obj/rwtouch src/rwtouch.c
 		$DYN -framework CoreFoundation -framework AudioToolbox -framework AVFoundation -lobjc -o obj/sound_test src/sound_test.c
 		$DYN -framework CoreFoundation -lMobileGestalt -o obj/mg_test src/mg_test.c
+		$DYN -framework CoreFoundation -o obj/mg_island src/mg_island.c
 		$DYN -framework CoreFoundation -framework AVFoundation -lobjc -o obj/torch_test src/torch_test.c
 		$DYN -O2 -o obj/camera_test src/camera_test.c src/camera_isp.c
 		$DYN -fobjc-arc -framework Foundation -framework AVFoundation -o obj/camera_avtest src/camera_avtest.m
@@ -374,7 +375,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 			fi
 		fi
 	fi
-	cp obj/hello_dyn obj/svc_test obj/surf_test obj/rwtouch obj/mg_test root/bin/
+	cp obj/hello_dyn obj/svc_test obj/surf_test obj/rwtouch obj/mg_test obj/mg_island root/bin/
 	[ -f obj/cpu_test ] && cp obj/cpu_test root/bin/        # (a prebuilt/ from before this program has none)
 	[ -f obj/halt_test ] && cp obj/halt_test root/bin/
 	[ -f obj/bootd ] && cp obj/bootd root/bin/

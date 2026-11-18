@@ -505,6 +505,13 @@ dt_prop_padded(struct dt_writer *w, const char *name, const char *value, uint32_
  * what the framebuffer is: sRGB.
  */
 static int gamut_p3;    /* boot-arg gamut=p3 (a test): the iPhone's own "P3" left in place */
+/*
+ * Boot-arg island=1: "artwork-device-subtype" 2556, the iPhone 14 Pro's, instead of the iPhone X's 2436. MobileGestalt's
+ * ArtworkDeviceSubType comes from it, and on iOS 16 it is what makes SpringBoard draw the Dynamic Island (the jailbreak
+ * tweaks of 16.x changed the same answer in MobileGestalt's cache). The screen stays the iPhone X's size.
+ */
+static int island;
+static uint32_t corner_radius;  /* boot-arg corner=N: /chosen/display-corner-radius, pixels */
 
 static void
 dt_identity(struct dt_writer *w, const struct identity_prop *props, uint32_t count, const unsigned char *data)
@@ -512,6 +519,12 @@ dt_identity(struct dt_writer *w, const struct identity_prop *props, uint32_t cou
 	for (uint32_t i = 0; i < count; i++) {
 		if (str_eq(props[i].name, "artwork-display-gamut") && !gamut_p3) {
 			dt_prop(w, props[i].name, "sRGB", 5);
+			continue;
+		}
+		if (str_eq(props[i].name, "artwork-device-subtype") && island && props[i].length == 4) {
+			uint32_t subtype = 2556;
+
+			dt_prop(w, props[i].name, &subtype, 4);
 			continue;
 		}
 		dt_prop(w, props[i].name, data + props[i].offset, props[i].length);
@@ -3158,6 +3171,8 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	int camera_requested = 0;
 	/* (the loader stays for run after run: what the last run's arguments said must not hold for this one) */
 	gamut_p3 = 0;
+	island = 0;
+	corner_radius = 0;
 	/* a run that does not ask for writes does not get them, whatever an earlier run of this
 	 * loader asked for (the loader stays resident across runs) */
 	block_write_requested = 0;
@@ -3179,6 +3194,13 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 		torch_requested |= starts_with(c, "torch=") && (c == pi.cmdline || c[-1] == ' ') && c[6] >= '1' && c[6] <= '9';
 		camera_requested |= starts_with(c, "cam=5") && (c == pi.cmdline || c[-1] == ' ') && (c[5] == 0 || c[5] == ' ');
 		gamut_p3 |= starts_with(c, "gamut=p3") && (c == pi.cmdline || c[-1] == ' ');
+		island |= starts_with(c, "island=1") && (c == pi.cmdline || c[-1] == ' ');
+		if (starts_with(c, "corner=") && (c == pi.cmdline || c[-1] == ' ')) {
+			corner_radius = 0;
+			for (const char *d = c + 7; *d >= '0' && *d <= '9'; d++) {
+				corner_radius = corner_radius * 10 + (uint32_t)(*d - '0');
+			}
+		}
 		if (starts_with(c, "ufs=") && (c == pi.cmdline || c[-1] == ' ') && c[4] >= '1' && c[4] <= '2' &&
 		    (c[5] == 0 || c[5] == ' ')) {
 			ufs_requested = c[4] - '0';
@@ -3399,6 +3421,14 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 	/* what MobileGestalt answers "main screen scale" from: 3 device pixels per point */
 	dt_prop_u32(&w, "display-scale", 3);
 	dt_prop_u32(&w, "display-rotation", 0);
+	/*
+	 * The screen's corners (iBoot fills it from syscfg on the iPhone; the template has 0): MobileGestalt's DeviceCornerRadius,
+	 * which the Dynamic Island takes its rounding from (0: a square island). Boot-arg corner=N pixels; island=1 alone gives
+	 * the iPhone 14 Pro's 55 points.
+	 */
+	if (corner_radius != 0 || island) {
+		dt_prop_u32(&w, "display-corner-radius", corner_radius != 0 ? corner_radius : 165);
+	}
 	/* how the kernel is to ask the firmware for more cores (PSCI) */
 	dt_prop_str(&w, "psci-method", plat->psci_hvc ? "hvc" : "smc");
 	/* the time now, by the firmware's clock (the kernel has no real-time clock driver) */
