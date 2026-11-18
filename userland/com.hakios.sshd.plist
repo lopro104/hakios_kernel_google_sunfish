@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- sshd of the package manager's prefix (build.sh JB=ssh): root with the key in /var/root/.ssh/authorized_keys only,
+     no passwords, no PAM (the prefix has no pam.d for it). Kept running by launchd. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.hakios.sshd</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/var/jb/usr/sbin/sshd</string>
+		<string>-D</string>
+		<string>-e</string>
+		<string>-h</string>
+		<string>/var/root/.ssh/ssh_host_ed25519_key</string>
+		<string>-o</string>
+		<string>UsePAM=no</string>
+		<string>-o</string>
+		<string>PasswordAuthentication=no</string>
+		<string>-o</string>
+		<string>KbdInteractiveAuthentication=no</string>
+		<string>-o</string>
+		<string>PermitRootLogin=prohibit-password</string>
+		<string>-o</string>
+		<string>AuthorizedKeysFile=/var/root/.ssh/authorized_keys</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/var/jb/usr/bin:/var/jb/bin:/var/jb/usr/sbin:/redwood/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/dev/console</string>
+</dict>
+</plist>

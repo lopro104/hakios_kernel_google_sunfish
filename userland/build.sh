@@ -517,6 +517,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	# fairplayd among them).
 	cp com.hakios.demo.plist com.hakios.wifi.plist root/LaunchDaemons/
 	cp com.hakios.bootd.plist root/LaunchDaemons/
+	[ "$JB" = ssh ] && [ -f ../ssh/authorized_keys ] && cp com.hakios.sshd.plist root/LaunchDaemons/
 	# the device's name for Bluetooth (BLUETOOTH=1; BT_NAME="...", "HakiOS" when not given): set once at load by scname
 	rm -f root/LaunchDaemons/com.hakios.scname.plist
 	if [ "${BLUETOOTH-0}" = 1 ] && [ -f root/bin/scname ]; then
@@ -699,7 +700,18 @@ if [ -n "$FLASHBOOT" ] && [ -f $CACHE/dyld_shared_cache_arm64 ]; then
 	# /private/preboot/jb once the Darwin volume is the root -- the volume where a rootless jailbreak keeps its
 	# Procursus on an iPhone as well; init grafts it onto /var/jb (src/init.c, mount_writable)
 	# only with JB=1: 132 MB, more than the boot volume in RAM and the 64 MB boot partition can take
-	if [ -n "$JB" ] && [ -d ../jb/root/var/jb ]; then
+	# JB=ssh: only sshd, a shell and a few commands of it (12 MB, tools/jb-slim.py), and sshd started at load
+	# (com.hakios.sshd.plist) with the key in ../ssh/authorized_keys: a way in over Wi-Fi
+	if [ "$JB" = ssh ] && [ -d ../jb/root/var/jb ]; then
+		python3 ../tools/jb-slim.py ../jb/root/var/jb flashboot/jb usr/sbin/sshd usr/sbin/pwd_mkdb bin/sh bin/bash \
+		    bin/ls bin/cat bin/cp bin/mv bin/rm bin/mkdir bin/ln usr/bin/chmod usr/bin/head usr/bin/tail usr/bin/wc \
+		    usr/bin/du usr/bin/id bin/uname bin/kill usr/bin/env usr/bin/grep usr/bin/killall bin/sleep usr/bin/tar \
+		    etc/master.passwd etc/passwd etc/group etc/ssh etc/profile var/empty
+		# root's shell is zsh in the prefix, which is not among these: sshd refused root for it
+		sed -i 's|/var/jb/usr/bin/zsh|/var/jb/bin/bash|; s|/var/jb/var/root|/var/root|' flashboot/jb/etc/master.passwd flashboot/jb/etc/passwd
+		mkdir -p flashboot/jb-rw
+		echo "  sshd and a shell of the package manager's prefix: $(du -sh flashboot/jb | cut -f1) as /jb of the boot volume"
+	elif [ -n "$JB" ] && [ -d ../jb/root/var/jb ]; then
 		cp -a ../jb/root/var/jb flashboot/jb
 		mkdir -p flashboot/jb-rw        # where init mounts the prefix's writable copy (src/init.c)
 		# and what Sileo runs from /bin, for init to put over the Darwin volume's /bin (see the system image below)
