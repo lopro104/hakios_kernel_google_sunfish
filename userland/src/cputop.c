@@ -10,7 +10,9 @@
  *
  *   usage: cputop [SECONDS [LOOKS]]     every SECONDS (default 5), LOOKS times (default: until the run ends)
  */
+#include <mach/mach.h>
 #include <mach/mach_time.h>
+#include <mach/processor_info.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,14 +97,42 @@ main(int argc, char **argv)
 	}
 	mach_timebase_info(&timebase);
 	setvbuf(stdout, NULL, _IOLBF, 0);
+	static uint32_t ticks_before[16][CPU_STATE_MAX];
+
 	for (unsigned look = 0; looks == 0 || look <= looks; look++) {
+		/* each core's busy share since the last look, idle being what the kernel counted as idle: kernel time included */
+		char cores[160] = "";
+		natural_t ncpu = 0;
+		processor_info_array_t load = NULL;
+		mach_msg_type_number_t nload = 0;
+
+		if (host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &ncpu, &load, &nload) == KERN_SUCCESS) {
+			size_t at_char = 0;
+
+			for (natural_t c = 0; c < ncpu && c < 16; c++) {
+				uint32_t *t = (uint32_t *)&load[c * CPU_STATE_MAX], busy = 0, total = 0;
+
+				for (int k = 0; k < CPU_STATE_MAX; k++) {
+					uint32_t d = t[k] - ticks_before[c][k];
+
+					total += d;
+					busy += k == CPU_STATE_IDLE ? 0 : d;
+					ticks_before[c][k] = t[k];
+				}
+				at_char += (size_t)snprintf(cores + at_char, sizeof(cores) - at_char, "%s%u", c ? "/" : "",
+				    total ? 100 * busy / total : 0);
+			}
+			vm_deallocate(mach_task_self(), (vm_address_t)load, nload * sizeof(integer_t));
+		}
 		int bytes = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids)), count = 0, shown = 0;
 		uint64_t at = mach_absolute_time(), all = 0;
 
 		for (int i = 0; i < bytes / (int)sizeof(int) && count < MAX_PROCS; i++) {
 			struct proc_taskinfo info;
 
-			if (pids[i] <= 0 || proc_pidinfo(pids[i], PROC_PIDTASKINFO, 0, &info, sizeof(info)) != sizeof(info)) {
+			/* pid 0 too: kernel_task, where the drivers' threads are (proc_listpids lists it once, as 0) */
+			if (pids[i] < 0 || (pids[i] == 0 && i > 0) ||
+			    proc_pidinfo(pids[i], PROC_PIDTASKINFO, 0, &info, sizeof(info)) != sizeof(info)) {
 				continue;
 			}
 			now[count].pid = pids[i];
@@ -126,8 +156,8 @@ main(int argc, char **argv)
 			qsort(shares, (size_t)n, sizeof(shares[0]), by_time);
 			/* the shares as percent of one core over the time between the looks (both in mach_absolute_time's units) */
 			double span = (double)(at - before);
-			printf("cputop: %llu s: %.0f%% in all:", (unsigned long long)((at - start) * timebase.numer / timebase.denom / 1000000000ull),
-			    span > 0 ? 100.0 * (double)all / span : 0);
+			printf("cputop: %llu s: cores busy %%: %s; %.0f%% in all:", (unsigned long long)((at - start) * timebase.numer /
+			    timebase.denom / 1000000000ull), cores, span > 0 ? 100.0 * (double)all / span : 0);
 			for (int i = 0; i < n && shown < SHOWN; i++) {
 				char name[64] = "?";
 				double percent = span > 0 ? 100.0 * (double)shares[i].time / span : 0;
@@ -135,7 +165,11 @@ main(int argc, char **argv)
 				if (percent < 1) {
 					break;
 				}
-				proc_name(shares[i].pid, name, sizeof(name));
+				if (shares[i].pid == 0) {
+					strlcpy(name, "kernel_task", sizeof(name));
+				} else {
+					proc_name(shares[i].pid, name, sizeof(name));
+				}
 				printf(" %s[%d] %.0f%%", name, shares[i].pid, percent);
 				shown++;
 			}
