@@ -517,7 +517,7 @@ if [ -d $DARWIN/rootfs/usr/lib ]; then
 	# fairplayd among them).
 	cp com.hakios.demo.plist com.hakios.wifi.plist root/LaunchDaemons/
 	cp com.hakios.bootd.plist root/LaunchDaemons/
-	[ "$JB" = ssh ] && [ -f ../ssh/authorized_keys ] && cp com.hakios.sshd.plist root/LaunchDaemons/
+	[ "$JB" = ssh ] && [ -z "$SHARE" ] && [ -f ../ssh/authorized_keys ] && cp com.hakios.sshd.plist root/LaunchDaemons/
 	# the device's name for Bluetooth (BLUETOOTH=1; BT_NAME="...", "HakiOS" when not given): set once at load by scname
 	rm -f root/LaunchDaemons/com.hakios.scname.plist
 	if [ "${BLUETOOTH-0}" = 1 ] && [ -f root/bin/scname ]; then
