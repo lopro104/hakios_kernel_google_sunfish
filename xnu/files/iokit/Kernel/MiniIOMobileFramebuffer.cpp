@@ -39,6 +39,9 @@ extern struct vc_info vinfo;            /* the boot framebuffer, as the text con
 #include "MiniIOSurface.h"
 
 extern "C" void hakios_tl(const char * format, ...) __printflike(1, 2);
+/* A board's panel driver may set this (devices/sunfish's cmdbright: the panel to sleep and back): iOS's display power
+ * request (IOMobileFramebufferRequestPowerChange, backboardd at screen off and on), its first argument as given. */
+extern "C" { int (*hakios_panel_power_hook)(uint64_t state) = NULL; }
 
 /* IOConnectCallMethod selectors of the framebuffer user client (Darwin userland 16.5) */
 enum {
@@ -2017,8 +2020,14 @@ IOMobileFramebufferUserClient::externalMethod(uint32_t selector, IOExternalMetho
 	case kFBMethodSwapSignal:
 	case kFBMethodSwapCancel:
 	case kFBMethodSwapCancelAll:
-	case kFBMethodRequestPowerChange:
 	case kFBMethodChangeFrameInfo:
+		return kIOReturnSuccess;
+	case kFBMethodRequestPowerChange:
+		IOLog("MiniIOMobileFramebuffer: power change %llu (%u arguments)\n", args->scalarInputCount > 0 ? in[0] : ~0ULL,
+		    args->scalarInputCount);
+		if (hakios_panel_power_hook != NULL && args->scalarInputCount > 0) {
+			(void) hakios_panel_power_hook(in[0]);
+		}
 		return kIOReturnSuccess;
 
 	case kFBMethodNotifications:                    /* in: callback (0 = off), its argument, type, 0 */
