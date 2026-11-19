@@ -1,117 +1,105 @@
 # ios-sunfish
 
-**Apple's iOS 16 on the Google Pixel 4a (and Redmi Note 10 Pro).**
+**Apple's iOS 16.5 on the Google Pixel 4a (`sunfish`, Snapdragon 730G / SM7150).**
 
-This repository boots and runs genuine Apple iOS 16 (iPhone X `iPhone10,3` userland) on the Google Pixel 4a (`sunfish`), sharing the Qualcomm Snapdragon 730G/732G (SM7150) architecture with the Redmi Note 10 Pro (`sweet`, from [ios-sweet](https://github.com/dipa-studio/ios-sweet)).
-
-The project runs Apple's open-source XNU kernel (xnu-8796, iOS 16 generation) directly on bare metal without Android running underneath.
+Genuine iOS 16.5 (20F66, iPhone X `iPhone10,3` userland) running on Apple's open-source XNU kernel (xnu-8796.121.2), directly on
+the hardware: no Android underneath. The kernel is the [HakiOS](https://github.com/oosexgang/hakios-xnu-kernel) base with this
+phone's drivers on top (`devices/sunfish` in the HakiOS tree). This repository holds the notes, research and tools of the port;
+`NOTES.md` is the running log of what was done, measured and decided.
 
 > [!NOTE]
-> **Status (Verified on Hardware):** 
-> The Pixel 4a boots iOS 16 into a fully interactive SpringBoard UI with working touch, display brightness, hardware buttons, battery monitoring, sensors, and functional Wi-Fi networking with Safari internet access.
+> **State (2026-11-19):** iOS is installed on the phone's own storage and boots by itself from `boot_a`, with Android
+> (EvolutionX) kept on slot b. It is usable day to day: home screen, apps, Wi-Fi, Bluetooth audio, sound, SSH.
+> Battery life is the current work (idle draw is several times Android's).
 
 ---
 
-## Hardware Support Status
+## What works
 
-| Subsystem | sunfish (Pixel 4a) | sweet (Redmi Note 10 Pro) | Implementation Details |
-| :--- | :---: | :---: | :--- |
-| **Boot Chain** | **Works** | **Works** | Non-destructive `fastboot boot` via boot shim or U-Boot Header v2 (`0x80000` text offset, LZ4, 64 MiB AVB footer). |
-| **Display** | **Works** | **Works** | Sunfish: 1080x2340 Samsung `sofef01` command-mode OLED via MDP pingpong autorefresh (`hakios.cmdpanel`). Sweet: 1080x2400 video-mode panel. |
-| **iOS GUI** | **Works** | **Works** | SpringBoard, Lock Screen, Control Center, Settings, Calculator, Safari, Weather. |
-| **Touchscreen** | **Works** | **Works** | Sunfish: In-cell ST Microelectronics **FTM5** (`0x49`) over I2C QUP SE7 with PM6150 GPIO4 load switch. Sweet: Goodix GT9896. Home bar swipe and multi-touch functional. |
-| **Hardware Buttons** | **Works** | **Works** | Power and Volume Down (PM6150 PON), Volume Up (PM6150L GPIO). |
-| **Display Backlight** | **Works** | **Works** | DCS 0x51 over DSI0 with AppleARMBacklight emulation; Control Center brightness slider fully functional. |
-| **Battery & Charging** | **Works** | **Works** | PM6150 fuel gauge & ADC5 thermistor; status bar percentage, bolt icon, and `powerd` integration. |
-| **Wi-Fi Networking** | **Works** | **Works** | Full `en0` Wi-Fi stack via WCN3990 modem subsystem; Settings > Wi-Fi scanning & WPA2 joining with blue checkmark; IPv4/IPv6 DHCP and internet access. |
-| **Sensors & Orientation** | **Works** | **Works** | Accelerometer, gyroscope, and orientation detection (`SweetSensors` / `backboardd` integration). |
-| **GPU & Acceleration** | **Works** | **Works** | Adreno 618 bring-up with Mesa freedreno and SweetMetal / HakiosMetal hardware-accelerated rendering. |
-| **Storage & Rootfs** | **Works** | **Works** | Internal UFS storage (LUN 0); boots from existing `userdata` partition or RAM-disk (no GPT repartitioning required). |
-| **Audio & Camera** | In Progress | In Progress | Audio DSP & camera sensor bring-up underway. |
+| Subsystem | State | Notes |
+| :--- | :---: | :--- |
+| Boot | **Works** | Stock ABL → U-Boot (sm7150-mainline based) → HakiOS EFI loader → XNU. Installed in `boot_a`; root and data on the `darwin` partition. Nothing of Android's slot b is touched. |
+| Display | **Works** | 1080×2340 Samsung `sofef01` command-mode OLED, pingpong autorefresh. iOS draws at 1125×2436 (iPhone X), fitted to the panel. |
+| GPU | **Works** | Adreno 618 through Mesa freedreno (OpenGL); a Metal driver boots but is not the default yet. |
+| Touch | **Works** | ST FTM5 over I²C (QUP SE7). |
+| Buttons | **Works** | Power, volume (PM6150 PON, PM6150L GPIO). |
+| Brightness | **Works** | DCS 0x51 over DSI0; Control Center and Settings slider. Panel sleep at screen off is being tested (`panel_power=1`). |
+| Battery | **Works** | PM6150 fuel gauge, charge state, temperature; status bar and `powerd`. |
+| CPU | **Works** | All 8 cores (PSCI), OSM frequency control with a load-following governor and thermal limits. |
+| Storage | **Works** | UFS; APFS root, journaled HFS+ `/private/var` that persists across boots. |
+| Wi-Fi | **Works** | WCN3990 through the modem (QMI/WLFW); join from Settings, real MAC from ABL's device tree. |
+| Bluetooth | **Works** | WCN3990 UART; A2DP audio to speakers/headphones, Control Center toggle. |
+| Sound | **Works** | ADSP (Q6) playback to the CS35L41 amplifier with its protection firmware. |
+| Microphone | Partly | RT5514 + TDM capture path brought up; not wired to iOS apps yet. |
+| Haptics | **Works** | TI DRV2624. |
+| Flashlight | **Works** | PM6150L flash LED; Control Center button. |
+| SSH | **Works** | OpenSSH over Wi-Fi, key login only. |
+| Sensors | Not yet | They run inside the ADSP (SEE); the sensors process does not start yet. |
+| Cellular, GNSS | Not yet | The modem boots (it serves Wi-Fi); no CommCenter link. |
+| Fingerprint | Not yet | Same FPC secure app as the Pixel 5 port below: planned. |
+| Camera | Not yet | |
 
 ---
 
-## How It Boots
+## How it boots
 
 ```
-Pixel 4a ABL (Unlocked Bootloader)
-  └── fastboot boot <image.img>          (Purely in RAM; boot partitions are never overwritten)
-        ├── Option A: U-Boot + HKUB Ramdisk (HakiOS Tree)
-        │     └── U-Boot -> loader.efi -> XNU Mach-O + Apple Device Tree (ADT)
-        └── Option B: Bare-Metal Boot Shim (Classic Tree)
-              └── Shim enables MDP autorefresh -> XNU Mach-O + ADT
-                    └── XNU Kernel Initialisation
-                          ├── Mounts UFS storage (or APFS RAM-disk)
-                          ├── Launches dyld & launchd
-                          └── Starts backboardd & SpringBoard (iOS 16 GUI)
+Pixel 4a ABL (unlocked)
+  └── boot_a: U-Boot (sunfish_storage)
+        └── HakiOS loader.efi (reads ABL's device tree: MAC/BT addresses, reboot reason)
+              └── XNU + Apple device tree
+                    ├── root (APFS) and /private/var (HFS+) on the darwin partition
+                    └── launchd → backboardd → SpringBoard
 ```
 
-iOS recognizes the device as an **iPhone X** (`iPhone10,3`, 1125x2436). The Pixel's 1080x2340 OLED panel displays the centered frame with full touch coordinate translation.
+Test runs go through `devices/sunfish/run.sh` in the HakiOS tree, which boots a fresh kernel from RAM without writing the phone.
+`devices/sunfish/mkinstall.sh` builds the image that is flashed to `boot_a`.
 
 ---
 
-## Key Hardware Facts (Google Pixel 4a)
+## Repository layout
 
-- **SoC:** Qualcomm Snapdragon 730G (SM7150-AB)
-  - 6x Kryo 470 Silver (Cortex-A55) @ up to 1.80 GHz
-  - 2x Kryo 470 Gold (Cortex-A76) @ up to 2.20 GHz
-  - ARM GICv3 interrupt controller, PSCI over SMC, 19.2 MHz generic arch timer
-- **RAM:** 6 GiB LPDDR4X (starts at `0x100000000`)
-- **Display:** 5.81" 1080x2340 Samsung `sofef01` FHD+ OLED, DSI command mode
-- **Touch:** STMicroelectronics FTM5 on I2C QUP SE7 (`0xa84000`, address `0x49`), PM6150 GPIO4 load switch
-- **Storage:** Micron/Samsung UFS 2.1 at `0x1d84000`
-- **Power Management:** Qualcomm PM6150 + PM6150L PMICs over SPMI bus arbiter
-- **WLAN:** Qualcomm WCN3990 (integrated 802.11ac Wi-Fi & Bluetooth 5.0)
+- `NOTES.md`: the project log: current state, traps, measurements, decisions.
+- `docs/`: hardware notes (`docs/SUNFISH.md`) and older bring-up documents.
+- `tools/`, `userland/`, `shim/`, `xnu/patches/`: the first ("classic") tree, from before the move to HakiOS; kept as reference.
+- `research/`, `scratch/`: local only (git-ignored): dumps, Android captures, downloads.
+
+The kernel, loader, drivers and userland build live in the HakiOS tree (`~/hakios`, branch `merge-upstream-2`, with
+`devices/sunfish` as its own repository).
 
 ---
 
-## Repository Structure
+## Credits
 
-- `hakios/` (or `~/hakios`): Modern HakiOS base migration featuring clean driver manifests, modular Kconfig defconfigs, U-Boot EFI loader (`loader.efi`), and integrated SoC layer for SM7150.
-- `shim/`: Bare-metal ARM64 boot shim generating Android boot image v2 with 4096-byte pages and AVB hash footer for Google Pixel ABL.
-- `xnu/patches/`: The chronological XNU kernel patch series.
-- `tools/`: Build scripts, Apple Device Tree compiler (`mkadt.py`), boot image packer (`mkubootimg.py`), userland root helpers, and diagnostics.
-- `userland/`: Helper tools, tweaks (`SweetSensors`), network routing utilities, and UI benchmarks.
-- `docs/`: Technical specifications, hardware differences ([`docs/SUNFISH.md`](docs/SUNFISH.md)), GPU driver documentation, and bring-up guides.
-- `NOTES.md`: Active developer and handoff log recording exact commits, test runs, and hardware measurements.
+This port stands on a lot of other people's work. Every repository we built on, ported from, or studied:
 
----
+**Base**
+- [oosexgang/hakios-xnu-kernel](https://github.com/oosexgang/hakios-xnu-kernel): the HakiOS kernel tree this port is built on
+  ([hackios-xnu-kernel](https://github.com/oosexgang/hackios-xnu-kernel), [hackios-xnu-userland](https://github.com/oosexgang/hackios-xnu-userland),
+  [hakios-uefi](https://github.com/oosexgang/hakios-uefi), [hakios-metal](https://github.com/oosexgang/hakios-metal),
+  [hakios-mt6768](https://github.com/oosexgang/hakios-mt6768)).
+- [dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet): the first tree of this project (Redmi Note 10 Pro, same SoC).
+- [apple-oss-distributions/xnu](https://github.com/apple-oss-distributions/xnu) and Apple's other open-source releases.
+- [sm7150-mainline/u-boot](https://github.com/sm7150-mainline/u-boot) and the sm7150-mainline Linux work: U-Boot and register facts.
 
-## Getting Started
+**Ports to the same or related phones (ported from or studied)**
+- [Yofuness/ios-sunfish](https://github.com/Yofuness/ios-sunfish): another iOS port to the Pixel 4a; Bluetooth, audio and sensors work came from reading it.
+- [DenialOfGravity/ios-redfin](https://github.com/DenialOfGravity/ios-redfin): Pixel 5; Touch ID, sensors, cellular.
+- [DC28088/ios-sweet](https://github.com/DC28088/ios-sweet): Redmi Note 10 Pro, newer iOS versions.
+- [Nik300/ios-viva](https://github.com/Nik300/ios-viva): CPU and GPU governors, panel sleep.
+- [printlndarling/hakios-thyme](https://github.com/printlndarling/hakios-thyme), [pixelpixys/hakios-malmo](https://github.com/pixelpixys/hakios-malmo),
+  [superboyyy/hakios-arm64e-dada](https://github.com/superboyyy/hakios-arm64e-dada), [iola1999/hackios-redmi-k90-annibale](https://github.com/iola1999/hackios-redmi-k90-annibale),
+  [SakuraKyuo/hackios-xnu-kernel_corvette](https://github.com/SakuraKyuo/hackios-xnu-kernel_corvette): other HakiOS devices.
+- [MakrSas/ios-topaz](https://github.com/MakrSas/ios-topaz), [nishant713/ios-pipa](https://github.com/nishant713/ios-pipa),
+  [lx200332/popsicle-ios-port](https://github.com/lx200332/popsicle-ios-port), [NWylynko/ios-flame](https://github.com/NWylynko/ios-flame),
+  [ry-diffusion/Bergamota](https://github.com/ry-diffusion/Bergamota), [PixOS-Project/pixelios-kernel](https://github.com/PixOS-Project/pixelios-kernel),
+  [UniXNU/UniXNU](https://github.com/UniXNU/UniXNU): other ports and kernels studied.
 
-### Prerequisites
-- Google Pixel 4a (`sunfish`, non-5G) with an **unlocked bootloader**.
-- Linux development workstation with `fastboot`, `adb`, `python3`, `clang`, `lld`, and `avbtool`.
-- iPhone X iOS 16.7.16 IPSW (`iPhone10,3_16.7.16_20H392_Restore.ipsw`) or iOS 16.5 IPSW.
+**Android side (hardware facts)**
+- Google's `android_kernel_google_msm-4.14` and the sunfish device tree (clocks, regulators, panel, audio paths, as built in EvolutionX).
+- [EvolutionX](https://github.com/Evolution-X): the Android build used for comparison and firmware.
 
-### 1. Booting with Fastboot (Non-Destructive)
-Device bring-up uses temporary RAM-loaded boot images. The bootloader, recovery, modem, and partition tables remain completely untouched:
-
-```bash
-# Boot the pre-assembled signed HakiOS / U-Boot image:
-fastboot boot hakios/build/u-boot-sunfish-hakios-signed.img
-
-# Or boot the classic shim image:
-fastboot boot shim/out/shim-boot.img
-```
-
-### 2. Live Kernel Logging & Diagnostics
-The kernel streams logs live over USB using CDC-ECM networking at `192.168.7.2`:
-
-```bash
-# Connect and view live kernel console output:
-nc 192.168.7.2 1050
-
-# Or SSH into the live iOS environment:
-ssh root@192.168.7.2
-```
-
----
-
-## Credits & Acknowledgements
-
-- [**ios-sweet**](https://github.com/dipa-studio/ios-sweet) & **dipa-studio**: The foundational project bringing iOS 16 to Qualcomm SM7150.
-- [**HakiOS / oosexgang**](https://github.com/oosexgang): Clean XNU base architecture, EFI loader, and freedreno/DRM integration.
-- **Apple Open Source**: Darwin XNU kernel (`xnu-8796`), IOHIDFamily, libpthread, and HFS/APFS components.
-- [**ios-flame**](https://github.com/NWylynko/ios-flame), [**Bergamota**](https://github.com/ry-diffusion/Bergamota), and [**ios-topaz**](https://github.com/MakrSas/ios-topaz): Hardware research and compatibility patches across Snapdragon devices.
-- **LineageOS & Mainline Linux**: Hardware DTS trees and driver specifications for `sunfish` and `sm7150`.
+**Userland and tools**
+- [Mesa](https://gitlab.freedesktop.org/mesa/mesa) (freedreno), [Procursus](https://github.com/ProcursusTeam/Procursus) (SSH and shell),
+  [ElleKit](https://github.com/evelyneee/ellekit), [Sileo](https://github.com/Sileo/Sileo).
+- [leminlimez/Nugget](https://github.com/leminlimez/Nugget), [ethxnn88/VisibleIsland](https://github.com/ethxnn88/VisibleIsland): MobileGestalt and Dynamic Island research.
