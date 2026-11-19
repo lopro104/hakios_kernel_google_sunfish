@@ -1,6 +1,6 @@
 # HakiOS
 
-[English](README.md) · 中文 · [Українська](README.uk.md)
+[English](README.hakios.md) · 中文 · [Українська](README.uk.md)
 
 **运行在 Android 手机上的 Apple 开源 Darwin 内核（XNU，xnu-8796.121.2）**，就像 Android 是手机上的 Linux 一样：有自己的引导加载器、自己的驱动、自己的配置系统和自己的版本。同一个内核可以在 QEMU 中运行，不需要任何 Apple 的东西，也不需要任何手机的东西（`make qemu-open`）。这是一个研究平台，不是 ROM：默认从内存运行，重启后手机回到 Android。
 
