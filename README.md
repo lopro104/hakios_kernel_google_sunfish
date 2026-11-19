@@ -1,62 +1,145 @@
-# HakiOS
+# hakios_kernel_google_sunfish
 
-English · [中文](README.zh.md) · [Українська](README.uk.md)
+**Apple's iOS 16.5 on the Google Pixel 4a (`sunfish`, Snapdragon 730G / SM7150).**
 
-**Apple's open-source Darwin kernel (XNU, xnu-8796.121.2) on Android phones**, the way Android is Linux on phones: a boot loader of its
-own, drivers of its own, a configuration system and a version of its own. The same kernel runs in QEMU with nothing of Apple's and
-nothing of any phone's (`make qemu-open`). A research bench, not a ROM: by default it runs from RAM, and a reboot gives the phone back to
-Android.
+Genuine iOS 16.5 (20F66, iPhone X `iPhone10,3` userland) running on Apple's open-source XNU kernel (xnu-8796.121.2), directly on
+the hardware: no Android underneath. This repository is the [HakiOS](https://github.com/oosexgang/hakios-xnu-kernel) tree with this
+phone's changes (upstream's own README: [README.hakios.md](README.hakios.md)); the phone's drivers are
+[hakios_device_google_sunfish](https://github.com/lopro104/hakios_device_google_sunfish). The project log, `NOTES.md`, and the
+earlier "classic" tree are on the [`ios-sunfish`](https://github.com/lopro104/hakios_kernel_google_sunfish/tree/ios-sunfish) branch.
 
-**Documentation:** [docs/](docs/index.md), and the site, [hackios-web.vercel.app](https://hackios-web.vercel.app).
+> [!NOTE]
+> **State (2026-11-19):** iOS is installed on the phone's own storage and boots by itself from `boot_a`, with Android
+> (EvolutionX) kept on slot b. It is usable day to day: home screen, apps, Wi-Fi, Bluetooth audio, sound, SSH.
+> Battery life is the current work (idle draw is several times Android's).
 
-**News, 4 November 2026:** on the POCO X5 Pro 5G the window server draws through Metal on the Adreno 642L, two ways. hakios-metal: page
-swipes 110 to 115 frames a second, Settings' scroll 118, the home button 106, rendering at 828x1792 stretched to the panel; 101, about 90 and about 90 at the full 1125x2436. UniXNU's Metal on Vulkan: swipes 50 to 57, scroll 41. The panel is 120 Hz,
-and **120 frames a second has not been reached**. [Metal on the Adreno](docs/reference/metal.md),
-[the measurements](docs/reference/metal-measurements.md).
+---
 
-Start with [Getting started](docs/getting-started/index.md), [On the phone](docs/getting-started/phone.md) or
-[Port a device](docs/porting/index.md). What works, part by part: [the documentation's front page](docs/index.md#what-works).
+## What works
 
-## Repositories
+| Subsystem | State | Notes |
+| :--- | :---: | :--- |
+| Boot | **Works** | Stock ABL → U-Boot (sm7150-mainline based) → HakiOS EFI loader → XNU. Installed in `boot_a`; root and data on the `darwin` partition. Nothing of Android's slot b is touched. |
+| Display | **Works** | 1080×2340 Samsung `sofef01` command-mode OLED, pingpong autorefresh. iOS draws at 1125×2436 (iPhone X), fitted to the panel. |
+| GPU | **Works** | Adreno 618 through Mesa freedreno (OpenGL); a Metal driver boots but is not the default yet. |
+| Touch | **Works** | ST FTM5 over I²C (QUP SE7). |
+| Buttons | **Works** | Power, volume (PM6150 PON, PM6150L GPIO). |
+| Brightness | **Works** | DCS 0x51 over DSI0; Control Center and Settings slider. Panel sleep at screen off is being tested (`panel_power=1`). |
+| Battery | **Works** | PM6150 fuel gauge, charge state, temperature; status bar and `powerd`. |
+| CPU | **Works** | All 8 cores (PSCI), OSM frequency control with a load-following governor and thermal limits. |
+| Storage | **Works** | UFS; APFS root, journaled HFS+ `/private/var` that persists across boots. |
+| Wi-Fi | **Works** | WCN3990 through the modem (QMI/WLFW); join from Settings, real MAC from ABL's device tree. |
+| Bluetooth | **Works** | WCN3990 UART; A2DP audio to speakers/headphones, Control Center toggle. |
+| Sound | **Works** | ADSP (Q6) playback to the CS35L41 amplifier with its protection firmware. |
+| Microphone | **Works** | Realtek RT5514 → TDM → ADSP capture; Voice Memos records. |
+| Haptics | **Works** | TI DRV2624. |
+| Flashlight | **Works** | PM6150L flash LED; Control Center button. |
+| SSH | **Works** | OpenSSH over Wi-Fi, key login only. |
+| Sensors | Not yet | They run inside the ADSP (SEE); the sensors process does not start yet. |
+| Cellular, GNSS | Not yet | The modem boots (it serves Wi-Fi); no CommCenter link. |
+| Fingerprint | Not yet | Same FPC secure app as the Pixel 5 port below: planned. |
+| Camera | Not yet | |
 
-| Repository | Contents |
-|---|---|
-| [hakios-xnu-kernel](https://github.com/oosexgang/hakios-xnu-kernel) | **common**: the kernel port, every common driver, the loader, user space, the tools, this documentation, and `devices/qemu` |
-| [`hakios-metal/`](hakios-metal) | Metal's command model on the Adreno, through the kernel's GPU driver |
-| [hakios-sm7325](https://github.com/oosexgang/hakios-sm7325) | POCO X5 Pro 5G: its defconfig, status, UEFI platform, firmware script, and its SoC's layer (Qualcomm SC7280 family) |
-| [hakios-mt6768](https://github.com/oosexgang/hakios-mt6768) | Infinix Hot 20 (MediaTek Helio G85): an experimental port with its own loader. Not in this repository's manifest |
-| [hakios-uefi](https://github.com/oosexgang/hakios-uefi) | the firmware that starts the loader: Mu-Silicium with HakiOS's boot path, banner and name, and HakiOS's U-Boot |
-| [hackios-web](https://github.com/oosexgang/hackios-web) | the website |
-| [hackios-xnu-userland](https://github.com/oosexgang/hackios-xnu-userland) | old: a pointer kept for its links. User space is `userland/` here |
+---
 
-How they fit: [the repositories](docs/porting/repositories.md).
+## How it boots
 
-## What you bring, and what is never here
+```
+Pixel 4a ABL (unlocked)
+  └── boot_a: U-Boot (sunfish_storage)
+        └── HakiOS loader.efi (reads ABL's device tree: MAC/BT addresses, reboot reason)
+              └── XNU + Apple device tree
+                    ├── root (APFS) and /private/var (HFS+) on the darwin partition
+                    └── launchd → backboardd → SpringBoard
+```
 
-Nothing of Apple's and no vendor's firmware is in these repositories. The Darwin user space, if you want it, you lay out yourself from an
-IPSW you get yourself, and the firmware comes off your own phone; nothing is downloaded for you, decrypted or circumvented. Apple's
-services (activation, Apple ID, iCloud, the App Store) are not supported and not a goal.
-[What is in the repository, and what never is](docs/index.md#what-is-in-the-repository-and-what-never-is).
+Test runs go through `devices/sunfish/run.sh` in the HakiOS tree, which boots a fresh kernel from RAM without writing the phone.
+`devices/sunfish/mkinstall.sh` builds the image that is flashed to `boot_a`.
 
-## Contributing
+---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [COMMUNITY.md](COMMUNITY.md).
+## Building and running
 
-## License and legal
+You need: a Pixel 4a (`sunfish`, not the 5G) with an **unlocked bootloader**, a Linux PC with `fastboot`, `adb`, `clang`/`lld`,
+`python3` and an `aarch64-linux-gnu-` cross toolchain, the iOS 16.5 (20F66) iPhone X IPSW, and this phone's Android vendor
+firmware (from an Android build or a factory image: GPU, modem/Wi-Fi, ADSP; it is not in any of these repositories).
 
-The XNU patch and the files derived from it are under the Apple Public Source License 2.0 ([LICENSE.APSL](LICENSE.APSL)), the rest under
-MIT ([LICENSE](LICENSE)), as the file headers say. Third parties: [NOTICE](NOTICE),
-[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), [COMPLIANCE.md](COMPLIANCE.md). What is and is not distributed: [LEGAL.md](LEGAL.md).
-None of this is legal advice.
+**1. Get the trees.**
+```sh
+git clone -b sunfish https://github.com/lopro104/hakios_kernel_google_sunfish hakios
+git clone https://github.com/lopro104/hakios_device_google_sunfish hakios/devices/sunfish
+cd hakios
+```
+Everything below runs from there.
 
-HakiOS is an independent research project. It is **not affiliated with or endorsed by Apple**; "Darwin", "iPhone", "XNU" and "Apple" are
-named only to describe what the code works with. If you believe a file here infringes anyone's rights, open an issue and it will be
-removed.
+**2. Build.**
+```sh
+make kernel                                                   # XNU with the sunfish drivers
+make loader                                                   # the HakiOS EFI loader
+CROSS_COMPILE=aarch64-linux-gnu- uefi/u-boot/build.sh sunfish_storage
+FW_ADSP=/path/to/vendor/firmware devices/sunfish/build-flash.sh   # the root and boot volumes (with SSH: see below)
+```
 
-## Team
+**3. Try it without writing anything.** With the phone in its bootloader:
+```sh
+FLASH=1 devices/sunfish/run.sh ["extra boot args" [SECONDS]]
+```
+This boots iOS from RAM, keeps a log in `logs/`, and hands the phone back after SECONDS (90 by default). The phone needs the
+`darwin` partition with the iOS root on it first; NOTES.md on the `ios-sunfish` branch ("STORAGE", "HFS DATA VOLUME") says how it was made on ours.
+Read it before you change partitions: never write `modemst1/2`, `fsg` or `persist`.
 
-hakios is an experimental project focused on bringing darwin to android hardware. our goal is to make hakios free and accessible to everyone.
+**4. Install.** `devices/sunfish/mkinstall.sh` makes `build/ios-boot.img` (U-Boot, loader, kernel and boot volume in one image).
+Test it with `fastboot boot build/ios-boot.img`, then, when happy:
+```sh
+fastboot flash boot_a build/ios-boot.img
+fastboot set_active a
+fastboot reboot
+```
+Slot b keeps Android: `fastboot set_active b` goes back.
 
-@oodze - founder, @netusd - advertising / ceo-dev, @wannqn - dev, @hxfuxyyXD - dev, Rhaenja Hun（杭润嘉） - developer / sponsor
+**SSH.** Put your public key in `ssh/authorized_keys` (git-ignored) before `build-flash.sh`; then `ssh root@<phone's Wi-Fi address>`.
+Key login only, no passwords.
 
-tym sicilium for the sources!
+**Useful boot arguments** (given to `run.sh`): `panel_power=1` panel sleep at screen off; `bat_measure=SECONDS` logs the battery
+current for a minute without unplugging; `cpu_gov=0` fixed top CPU speed; `metal=1` Metal instead of OpenGL. `NOTES.md` lists the rest.
+
+---
+
+## Repository layout
+
+- this repository, branch `sunfish`: the HakiOS kernel, loader and userland build, with the sunfish changes.
+- [hakios_device_google_sunfish](https://github.com/lopro104/hakios_device_google_sunfish), as `devices/sunfish`: drivers,
+  kernel config, boot arguments, `run.sh`, `build-flash.sh`, `mkinstall.sh`.
+- branch [`ios-sunfish`](https://github.com/lopro104/hakios_kernel_google_sunfish/tree/ios-sunfish): `NOTES.md` (the log:
+  state, traps, measurements, decisions), `docs/`, and the first "classic" tree (shim, XNU patch series) from before HakiOS.
+
+---
+
+## Credits
+
+This port stands on a lot of other people's work. Every repository we built on, ported from, or studied:
+
+**Base**
+- [oosexgang/hakios-xnu-kernel](https://github.com/oosexgang/hakios-xnu-kernel): the HakiOS kernel tree this port is built on
+  ([hackios-xnu-kernel](https://github.com/oosexgang/hackios-xnu-kernel), [hackios-xnu-userland](https://github.com/oosexgang/hackios-xnu-userland),
+  [hakios-uefi](https://github.com/oosexgang/hakios-uefi), [hakios-metal](https://github.com/oosexgang/hakios-metal),
+  [hakios-mt6768](https://github.com/oosexgang/hakios-mt6768)).
+- [dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet): the first tree of this project (Redmi Note 10 Pro, same SoC).
+- [apple-oss-distributions/xnu](https://github.com/apple-oss-distributions/xnu) and Apple's other open-source releases.
+- [sm7150-mainline/u-boot](https://github.com/sm7150-mainline/u-boot) and the sm7150-mainline Linux work: U-Boot and register facts.
+
+**Ports to the same or related phones (ported from or studied)**
+- [Yofuness/ios-sunfish](https://github.com/Yofuness/ios-sunfish): another iOS port to the Pixel 4a; Bluetooth, audio and sensors work came from reading it.
+- [DenialOfGravity/ios-redfin](https://github.com/DenialOfGravity/ios-redfin): Pixel 5; Touch ID, sensors, cellular.
+- [DC28088/ios-sweet](https://github.com/DC28088/ios-sweet): Redmi Note 10 Pro, newer iOS versions.
+- [Nik300/ios-viva](https://github.com/Nik300/ios-viva): CPU and GPU governors, panel sleep.
+- [printlndarling/hakios-thyme](https://github.com/printlndarling/hakios-thyme), [pixelpixys/hakios-malmo](https://github.com/pixelpixys/hakios-malmo),
+  [superboyyy/hakios-arm64e-dada](https://github.com/superboyyy/hakios-arm64e-dada), [iola1999/hackios-redmi-k90-annibale](https://github.com/iola1999/hackios-redmi-k90-annibale),
+  [SakuraKyuo/hackios-xnu-kernel_corvette](https://github.com/SakuraKyuo/hackios-xnu-kernel_corvette): other HakiOS devices.
+- [MakrSas/ios-topaz](https://github.com/MakrSas/ios-topaz), [nishant713/ios-pipa](https://github.com/nishant713/ios-pipa),
+  [lx200332/popsicle-ios-port](https://github.com/lx200332/popsicle-ios-port), [NWylynko/ios-flame](https://github.com/NWylynko/ios-flame),
+  [ry-diffusion/Bergamota](https://github.com/ry-diffusion/Bergamota), [PixOS-Project/pixelios-kernel](https://github.com/PixOS-Project/pixelios-kernel),
+  [UniXNU/UniXNU](https://github.com/UniXNU/UniXNU): other ports and kernels studied.
+
+**Graphics**
+- [Mesa](https://gitlab.freedesktop.org/mesa/mesa) (freedreno): the Adreno 618 driver iOS draws through.
