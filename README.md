@@ -139,11 +139,5 @@ This port stands on a lot of other people's work. Every repository we built on, 
   [ry-diffusion/Bergamota](https://github.com/ry-diffusion/Bergamota), [PixOS-Project/pixelios-kernel](https://github.com/PixOS-Project/pixelios-kernel),
   [UniXNU/UniXNU](https://github.com/UniXNU/UniXNU): other ports and kernels studied.
 
-**Android side (hardware facts)**
-- Google's `android_kernel_google_msm-4.14` and the sunfish device tree (clocks, regulators, panel, audio paths, as built in EvolutionX).
-- [EvolutionX](https://github.com/Evolution-X): the Android build used for comparison and firmware.
-
-**Userland and tools**
-- [Mesa](https://gitlab.freedesktop.org/mesa/mesa) (freedreno), [Procursus](https://github.com/ProcursusTeam/Procursus) (SSH and shell),
-  [ElleKit](https://github.com/evelyneee/ellekit), [Sileo](https://github.com/Sileo/Sileo).
-- [leminlimez/Nugget](https://github.com/leminlimez/Nugget), [ethxnn88/VisibleIsland](https://github.com/ethxnn88/VisibleIsland): MobileGestalt and Dynamic Island research.
+**Graphics**
+- [Mesa](https://gitlab.freedesktop.org/mesa/mesa) (freedreno): the Adreno 618 driver iOS draws through.
