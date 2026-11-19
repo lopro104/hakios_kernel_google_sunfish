@@ -30,7 +30,7 @@ phone's drivers on top (`devices/sunfish` in the HakiOS tree). This repository h
 | Wi-Fi | **Works** | WCN3990 through the modem (QMI/WLFW); join from Settings, real MAC from ABL's device tree. |
 | Bluetooth | **Works** | WCN3990 UART; A2DP audio to speakers/headphones, Control Center toggle. |
 | Sound | **Works** | ADSP (Q6) playback to the CS35L41 amplifier with its protection firmware. |
-| Microphone | Partly | RT5514 + TDM capture path brought up; not wired to iOS apps yet. |
+| Microphone | **Works** | Realtek RT5514 → TDM → ADSP capture; Voice Memos records. |
 | Haptics | **Works** | TI DRV2624. |
 | Flashlight | **Works** | PM6150L flash LED; Control Center button. |
 | SSH | **Works** | OpenSSH over Wi-Fi, key login only. |
