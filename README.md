@@ -1,5 +1,10 @@
 # ios-sunfish
 
+> [!IMPORTANT]
+> **This repository has moved** to [lopro104/hakios_kernel_google_sunfish](https://github.com/lopro104/hakios_kernel_google_sunfish)
+> (the kernel tree, branch `sunfish`; this repository's history is its `ios-sunfish` branch) and
+> [lopro104/hakios_device_google_sunfish](https://github.com/lopro104/hakios_device_google_sunfish). It is archived, read-only.
+
 **Apple's iOS 16.5 on the Google Pixel 4a (`sunfish`, Snapdragon 730G / SM7150).**
 
 Genuine iOS 16.5 (20F66, iPhone X `iPhone10,3` userland) running on Apple's open-source XNU kernel (xnu-8796.121.2), directly on
