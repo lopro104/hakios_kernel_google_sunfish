@@ -57,6 +57,50 @@ Test runs go through `devices/sunfish/run.sh` in the HakiOS tree, which boots a 
 
 ---
 
+## Building and running
+
+You need: a Pixel 4a (`sunfish`, not the 5G) with an **unlocked bootloader**, a Linux PC with `fastboot`, `adb`, `clang`/`lld`,
+`python3` and an `aarch64-linux-gnu-` cross toolchain, the iOS 16.5 (20F66) iPhone X IPSW, and this phone's Android vendor
+firmware (from an Android build or a factory image: GPU, modem/Wi-Fi, ADSP; it is not in any of these repositories).
+
+**1. Get the trees.** The kernel tree is
+[hakios_kernel_google_sunfish](https://github.com/lopro104/hakios_kernel_google_sunfish) (HakiOS with this phone's changes); the
+phone's drivers and scripts are [hakios_device_google_sunfish](https://github.com/lopro104/hakios_device_google_sunfish), checked out
+as `devices/sunfish` inside it. Everything below runs from the kernel tree's top directory.
+
+**2. Build.**
+```sh
+make kernel                                                   # XNU with the sunfish drivers
+make loader                                                   # the HakiOS EFI loader
+CROSS_COMPILE=aarch64-linux-gnu- uefi/u-boot/build.sh sunfish_storage
+FW_ADSP=/path/to/vendor/firmware devices/sunfish/build-flash.sh   # the root and boot volumes (with SSH: see below)
+```
+
+**3. Try it without writing anything.** With the phone in its bootloader:
+```sh
+FLASH=1 devices/sunfish/run.sh ["extra boot args" [SECONDS]]
+```
+This boots iOS from RAM, keeps a log in `logs/`, and hands the phone back after SECONDS (90 by default). The phone needs the
+`darwin` partition with the iOS root on it first; NOTES.md ("STORAGE", "HFS DATA VOLUME") says how it was made on ours.
+Read NOTES.md before you change partitions: never write `modemst1/2`, `fsg` or `persist`.
+
+**4. Install.** `devices/sunfish/mkinstall.sh` makes `build/ios-boot.img` (U-Boot, loader, kernel and boot volume in one image).
+Test it with `fastboot boot build/ios-boot.img`, then, when happy:
+```sh
+fastboot flash boot_a build/ios-boot.img
+fastboot set_active a
+fastboot reboot
+```
+Slot b keeps Android: `fastboot set_active b` goes back.
+
+**SSH.** Put your public key in `ssh/authorized_keys` (git-ignored) before `build-flash.sh`; then `ssh root@<phone's Wi-Fi address>`.
+Key login only, no passwords.
+
+**Useful boot arguments** (given to `run.sh`): `panel_power=1` panel sleep at screen off; `bat_measure=SECONDS` logs the battery
+current for a minute without unplugging; `cpu_gov=0` fixed top CPU speed; `metal=1` Metal instead of OpenGL. NOTES.md lists the rest.
+
+---
+
 ## Repository layout
 
 - `NOTES.md`: the project log: current state, traps, measurements, decisions.
