@@ -46,6 +46,7 @@
 #include <sys/sockio.h>
 #include <sys/systm.h>
 
+#include "board.h"              /* hakios_board_has(): the WCN3990 boards answer with their own */
 #include "log.h"
 
 #define SIOCSA80211             0x802869c8u     /* _IOW('i', 200, struct apple80211req) */
@@ -816,6 +817,8 @@ hakios_apple80211_summary(void)
 	}
 }
 
+errno_t hakios_sm7150_apple80211_ioctl(u_long command, void *data);   /* bsd/dev/board/sm7150_mpss.c */
+
 /* An Apple80211 request for the radio's interface, from the process that is running now. */
 errno_t
 hakios_apple80211_ioctl(u_long command, void *data)
@@ -828,6 +831,9 @@ hakios_apple80211_ioctl(u_long command, void *data)
 
 	if (command != SIOCSA80211 && command != SIOCGA80211) {
 		return EOPNOTSUPP;
+	}
+	if (hakios_board_has(HAKIOS_HAS_WIFI_WCN3990)) {
+		return hakios_sm7150_apple80211_ioctl(command, data);    /* the WCN3990's own (its station is the modem's) */
 	}
 	proc_selfname(who, sizeof(who));
 	/*

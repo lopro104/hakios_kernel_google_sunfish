@@ -40,8 +40,22 @@ main(int argc, char **argv, char **envp)
 	} else if (sysctlbyname("kern.hakios_switch_root", NULL, NULL, switch_to, sizeof(switch_to) - 1) != 0) {
 		printf("stage0dsu: switching the root: %s\n", strerror(errno));
 	} else {
+		struct stat st;
+
 		chdir("/");
 		printf("stage0dsu: the system volume is the root, this image on /hakios\n");
+		/*
+		 * A phone's own firmware (modem, Wi-Fi, DSPs) where another port of it keeps it: the fourth APFS container of
+		 * "darwin" (the Pixel 4a's Darwin 16.5 install, its root and two cryptexes before it), mounted read only on
+		 * /hakios/fw when this image has that directory and the phone has that partition. Nothing is written.
+		 */
+		if (stat("/hakios/fw", &st) == 0 && stat("/dev/ufs_darwin", &st) == 0) {
+			if (mount("apfs", "/hakios/fw", MNT_RDONLY, (void *)"/dev/ufs_darwin,c=3") == 0) {
+				printf("stage0dsu: the firmware of darwin's fourth container on /hakios/fw, read only\n");
+			} else {
+				printf("stage0dsu: no firmware from /dev/ufs_darwin,c=3: %s\n", strerror(errno));
+			}
+		}
 		execve(init_argv[0], init_argv, envp);
 		printf("stage0dsu: cannot run %s: %s\n", init_argv[0], strerror(errno));
 	}

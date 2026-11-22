@@ -67,6 +67,7 @@ enum {
 	                                         * FT6x36 ...) on I2C, wired as touch-i2c { } says (board/ft5x06.c) */
 	HAKIOS_HAS_TOUCH_FTM5      = 1u << 22,  /* an ST FTM5 on I2C serial engine 7, as the Pixel 4a has it (board/ftm5.c) */
 	HAKIOS_HAS_BATTERY_PM6150  = 1u << 23,  /* the battery read off a PM6150's BMS and charger, as the Pixel 4a has it (board/pm6150_battery.c) */
+	HAKIOS_HAS_WIFI_WCN3990    = 1u << 24,  /* a WCN3990 run through an SM7150's modem, as the Pixel 4a has it (board/sm7150_mpss.c) */
 	HAKIOS_HAS_CPUFREQ_SCMI = 1u << 16,     /* CPU performance queries via SCMI */
 };
 
