@@ -5165,23 +5165,52 @@ static void
 ew_a80211_event(uint32_t code, const void *payload, size_t plen)
 {
 	struct kev_msg km;
-	uint8_t buf[16 + 64] = { 0 };
+	char name[16] = "en0";
 
-	if (plen > 64) {
-		plen = 64;
-	}
-	memcpy(buf, "en0", 4);
-	if (plen != 0) {
-		memcpy(buf + 16, payload, plen);
-	}
 	memset(&km, 0, sizeof(km));
 	km.vendor_code = 1;
 	km.kev_class = 6;
 	km.kev_subclass = 1;
 	km.event_code = code;
-	km.dv[0].data_length = (uint32_t)(16 + plen);
-	km.dv[0].data_ptr = buf;
+	km.dv[0].data_length = sizeof(name);
+	km.dv[0].data_ptr = name;
+	if (plen != 0) {                                /* (the payload after the name, as a second piece: Darwin 27's is 540 bytes) */
+		km.dv[1].data_length = (uint32_t)plen;
+		km.dv[1].data_ptr = __DECONST(void *, payload);
+	}
 	(void)kev_post_msg(&km);
+}
+
+/*
+ * A join's end for Darwin 27 (a 656-byte ASSOCIATE): ASSOC_DONE (9) with 540 bytes -- ten records of 52 bytes about the
+ * access points tried (the first: its address), then 8 reserved, the reason at 0x210, the result at 0x214 (1 joined,
+ * 2 failed, 9 timed out, 21 wrong key) and 1 at 0x218 to say the result is there. wifid of 24A446/24B119 takes the join's
+ * outcome from this event and asks nothing; an empty one left Settings waiting 30 s and saying the join failed. (Layout as
+ * UniXNU's iPadOS 27 report documents it: UniXNU-sheng reports/ipados27-wifi-association.md.) 16.5's request: no payload,
+ * the outcome then asked as ASSOCIATE_RESULT (21).
+ */
+static bool g_assoc_modern;
+
+static void
+ew_a80211_assoc_done(uint32_t result, const uint8_t *bssid)
+{
+	if (g_assoc_modern) {
+		uint8_t *e = kalloc_data(540, Z_WAITOK | Z_ZERO);
+
+		if (e != NULL) {
+			uint32_t one = 1;
+
+			if (bssid != NULL) {
+				memcpy(e, bssid, 6);
+			}
+			memcpy(e + 0x214, &result, 4);
+			memcpy(e + 0x218, &one, 4);
+			ew_a80211_event(9, e, 540);
+			kfree_data(e, 540);
+			return;
+		}
+	}
+	ew_a80211_event(9, NULL, 0);
 }
 
 /* the events a station driver posts when it associates: SSID, BSSID, association done {status, reason}, link changed {is_link_down, ...} */
@@ -5201,6 +5230,14 @@ ew_a80211_link_events(void)
 
 	if (jn.connected && ew.up) {
 		memcpy(aev, jn.bssid, 6);
+	}
+	if (g_assoc_modern) {
+		/* Darwin 27, as UniXNU's verified order: the join's end first, then the name, the access point and the link */
+		ew_a80211_assoc_done(jn.connected && ew.up ? 1 : (g_join_result != 0 ? g_join_result : 2), aev);
+		ew_a80211_event(2, NULL, 0);
+		ew_a80211_event(3, NULL, 0);
+		ew_a80211_event(4, z, 32);
+		return;
 	}
 	ew_a80211_event(2, z, 8);
 	ew_a80211_event(3, z, 0);
@@ -5386,7 +5423,8 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 	}
 	case 2: {                                               /* AUTH_TYPE: 16 bytes {version, auth_lower, auth_upper, auth_upper_ext} */
 		if (!set) {
-			uint32_t out[4] = { 1, up ? 1 : 0, up ? 8 : 0, 0 };
+			/* (WPA2 personal is 0x10 to Darwin 27's wifid, 8 to 16.5's: UniXNU's iPadOS 27 report) */
+			uint32_t out[4] = { 1, up ? 1 : 0, up ? (g_assoc_modern ? 0x10 : 8) : 0, 0 };
 			err = ew_a80211_out(rq, out, sizeof(out));
 		}
 		break;
@@ -5677,6 +5715,7 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 			 * 8 for WPA2 with a passphrase): assoc_map=1 showed a length of 21 at 0x10 and 21 bytes of text from 0x14.
 			 */
 			k = rq->req_len >= 0x290 ? 4 : 0;
+			g_assoc_modern = k != 0;
 			memcpy(&slen, a + 0xc + k, 4);
 			memcpy(&klen, a + 0x3c + k, 4);
 			memcpy(&cipher, a + 0x40 + k, 4);
@@ -6582,7 +6621,7 @@ wlan_station_loop(void)
 				g_ujoin_valid = 0;
 				memset(&g_ujoin, 0, sizeof(g_ujoin));
 				g_join_result = found ? 21 : 2;
-				ew_a80211_event(9, NULL, 0);
+				ew_a80211_assoc_done(g_join_result, NULL);
 			}
 			if (jn.active) {
 				jn_cleanup();
