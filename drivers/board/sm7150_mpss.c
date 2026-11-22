@@ -5605,6 +5605,44 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 				err = EINVAL;
 				break;
 			}
+			/*
+			 * Darwin 27 sends 656 bytes (16.5: 592) and the fields moved. Boot-arg assoc_map=1: the request's shape, a
+			 * word at a time -- 0 for zero, a number for a word under 0x1000 (lengths, kinds), x for anything else --
+			 * never a byte of the network's name or its key.
+			 */
+			{
+				uint32_t map_on = 0;
+
+				PE_parse_boot_argn("assoc_map", &map_on, sizeof(map_on));
+				if (map_on && rq->req_len <= 0x400) {
+					uint8_t *all = kalloc_data(rq->req_len, Z_WAITOK | Z_ZERO);
+
+					if (all != NULL && copyin((user_addr_t)rq->req_data, all, rq->req_len) == 0) {
+						char line[200];
+						size_t at = 0;
+
+						for (uint32_t off = 0; off + 4 <= rq->req_len; off += 4) {
+							uint32_t w;
+
+							memcpy(&w, all + off, 4);
+							if (at == 0) {
+								at += snprintf(line, sizeof(line), "%03x:", off);
+							}
+							at += w == 0 ? snprintf(line + at, sizeof(line) - at, " 0") :
+							    w < 0x1000 ? snprintf(line + at, sizeof(line) - at, " %u", w) :
+							    snprintf(line + at, sizeof(line) - at, " x");
+							if ((off / 4) % 16 == 15 || off + 8 > rq->req_len) {
+								hakios_say("A80211 ASSOC map %s\n", line);
+								at = 0;
+							}
+						}
+					}
+					if (all != NULL) {
+						memset(all, 0, rq->req_len);
+						kfree_data(all, rq->req_len);
+					}
+				}
+			}
 			memcpy(&slen, a + 0xc, 4);
 			memcpy(&klen, a + 0x3c, 4);
 			memcpy(&cipher, a + 0x40, 4);
