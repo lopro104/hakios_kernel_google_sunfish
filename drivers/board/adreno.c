@@ -110,6 +110,38 @@
 #include "adreno_profile.h"
 
 #include "board.h"
+
+/*
+ * The Pixel 4a's Adreno 618 (feature gpu-a618) has a driver of its own, bsd/dev/board/adreno_a618.c, from the Darwin 16.5
+ * port of that phone: on such a board each entry point of this file hands over to it.
+ */
+void a618_adreno_quiesce(void);
+void a618_gpu_stop(void);
+void a618_adreno_stop(void);
+bool a618_gpu_ready(void);
+bool a618_gpu_parameter(uint32_t which, uint64_t *value);
+uint64_t a618_gpu_address(uint64_t size);
+void a618_gpu_address_free(uint64_t address, uint64_t size);
+void a618_gpu_space(uint64_t *used, uint32_t *live, uint64_t *largest, unsigned *holes, unsigned *most, uint64_t *lost,
+    uint32_t *refused);
+bool a618_gpu_map(uint64_t address, uint64_t phys, bool read_only);
+void a618_gpu_mapped(void);
+void a618_gpu_unmap(uint64_t address, uint64_t size);
+void a618_gpu_to_memory(void *start, uint64_t size);
+bool a618_gpu_done(uint32_t fence);
+uint32_t a618_gpu_last(void);
+void a618_gpu_worked(uint64_t *microseconds, uint32_t *submissions, uint32_t by[7]);
+uint32_t a618_gpu_submit(const uint64_t *addresses, const uint32_t *words, uint32_t count);
+void a618_gpu_report(const char *why);
+bool a618_gpu_recover(void);
+void a618_adreno_minute(void);
+void a618_adreno_init(void);
+
+static inline bool
+gpu_is_a618(void)
+{
+	return hakios_board_has(HAKIOS_HAS_GPU_A618);
+}
 #include "log.h"
 #include "time.h"
 
@@ -3141,6 +3173,10 @@ gpu_block_stop(void)
 void
 hakios_adreno_quiesce(void)
 {
+	if (gpu_is_a618()) {
+		a618_adreno_quiesce();
+		return;
+	}
 	if (cx_off) {
 		return;
 	}
@@ -3330,6 +3366,10 @@ static void gpu_block_stop(void);
 void
 hakios_gpu_stop(void)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_stop();
+		return;
+	}
 	if (gpu_kept) {
 		uint32_t waited = 0;
 
@@ -3354,6 +3394,10 @@ hakios_gpu_stop(void)
 void
 hakios_adreno_stop(void)
 {
+	if (gpu_is_a618()) {
+		a618_adreno_stop();
+		return;
+	}
 	uint32_t dirty = 0;
 
 	if (gpu_kept && !(PE_parse_boot_argn("adreno_dirty", &dirty, sizeof(dirty)) && dirty)) {
@@ -3364,6 +3408,9 @@ hakios_adreno_stop(void)
 bool
 hakios_gpu_ready(void)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_ready();
+	}
 	return gpu_kept;
 }
 
@@ -3388,6 +3435,9 @@ hakios_adreno_core_mhz(void)
 bool
 hakios_gpu_parameter(uint32_t which, uint64_t *value)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_parameter(which, value);
+	}
 	if (gpu_profile == NULL) { return false; }
 	switch (which) {
 	case 0x01:                              /* GPU_ID: none, the chip ID says it */
@@ -3447,6 +3497,9 @@ hakios_gpu_parameter(uint32_t which, uint64_t *value)
 uint64_t
 hakios_gpu_address(uint64_t size)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_address(size);
+	}
 	/*
 	 * (a size of 0, or one within a granule of 2^64, made a span of 0: an address given and not taken from the free
 	 * list, given again to the next buffer, and its free later a hole of nothing that made the real one's look freed twice)
@@ -3477,6 +3530,10 @@ hakios_gpu_address(uint64_t size)
 void
 hakios_gpu_address_free(uint64_t address, uint64_t size)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_address_free(address, size);
+		return;
+	}
 	unsigned at;
 
 	size = gpu_address_span(size);
@@ -3528,6 +3585,10 @@ void
 hakios_gpu_space(uint64_t *used, uint32_t *live, uint64_t *largest, unsigned *holes, unsigned *most, uint64_t *lost,
     uint32_t *refused)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_space(used, live, largest, holes, most, lost, refused);
+		return;
+	}
 	*largest = 0;
 	for (unsigned i = 0; i < gpu_free_count; i++) {
 		if (gpu_free[i].size > *largest) {
@@ -3546,18 +3607,29 @@ hakios_gpu_space(uint64_t *used, uint32_t *live, uint64_t *largest, unsigned *ho
 bool
 hakios_gpu_map(uint64_t address, uint64_t phys, bool read_only)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_map(address, phys, read_only);
+	}
 	return space_map(&core_space, address, phys, PTE_CORE | (read_only ? PTE_READ_ONLY : 0));
 }
 
 void
 hakios_gpu_mapped(void)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_mapped();
+		return;
+	}
 	space_commit(&core_space);
 }
 
 bool
 hakios_gpu_unmap(uint64_t address, uint64_t size)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_unmap(address, size);
+		return true;
+	}
 	uint32_t context = smmu_context(&core_space);
 
 	for (uint64_t offset = 0; offset < size; offset += 4096) {
@@ -3585,6 +3657,10 @@ hakios_gpu_unmap(uint64_t address, uint64_t size)
 void
 hakios_gpu_to_memory(void *start, uint64_t size)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_to_memory(start, size);
+		return;
+	}
 	to_memory((vm_offset_t)start, size);
 }
 
@@ -3592,6 +3668,9 @@ hakios_gpu_to_memory(void *start, uint64_t size)
 bool
 hakios_gpu_done(uint32_t fence)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_done(fence);
+	}
 	volatile uint32_t *word = (volatile uint32_t *)(core_scratch.memory + GPU_FENCE_AT);
 
 	to_memory((vm_offset_t)word, 4);
@@ -3601,6 +3680,9 @@ hakios_gpu_done(uint32_t fence)
 uint32_t
 hakios_gpu_last(void)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_last();
+	}
 	return gpu_fence;
 }
 
@@ -3659,6 +3741,10 @@ gpu_times(void)
 void
 hakios_gpu_worked(uint64_t *microseconds, uint32_t *submissions, uint32_t by[7])
 {
+	if (gpu_is_a618()) {
+		a618_gpu_worked(microseconds, submissions, by);
+		return;
+	}
 	gpu_times();
 	*microseconds = gpu_ticks * 10 / 192;
 	*submissions = gpu_timed_count;
@@ -3676,6 +3762,9 @@ hakios_gpu_worked(uint64_t *microseconds, uint32_t *submissions, uint32_t by[7])
 uint32_t
 hakios_gpu_submit(const uint64_t *addresses, const uint32_t *words, uint32_t count)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_submit(addresses, words, count);
+	}
 	uint32_t wanted, room = 0;
 
 	if (count > RING_WORDS / 4) {
@@ -3735,6 +3824,10 @@ hakios_gpu_submit(const uint64_t *addresses, const uint32_t *words, uint32_t cou
 void
 hakios_gpu_report(const char *why)
 {
+	if (gpu_is_a618()) {
+		a618_gpu_report(why);
+		return;
+	}
 	uint32_t context = smmu_context(&core_space);
 
 	if (!gpu_kept) {
@@ -3812,6 +3905,9 @@ hakios_gpu_report(const char *why)
 bool
 hakios_gpu_recover(void)
 {
+	if (gpu_is_a618()) {
+		return a618_gpu_recover();
+	}
 	uint32_t fence_status;
 
 	if (!gpu_kept || !gpu_recover) {
@@ -3921,6 +4017,10 @@ static struct block tsens = { "tsens1", 0, 0x200 };                     /* soc: 
 void
 hakios_adreno_minute(void)
 {
+	if (gpu_is_a618()) {
+		a618_adreno_minute();
+		return;
+	}
 	int32_t tenths[2];
 
 	if (!gpu_kept || tsens.phys == 0) {
@@ -4267,6 +4367,10 @@ blocks_of_board(void)
 void
 hakios_adreno_init(void)
 {
+	if (gpu_is_a618()) {
+		a618_adreno_init();
+		return;
+	}
 	static const char *const what[] = {
 		"", "the clocks outside", "the fuses", "the clock controller", "the CX half's power", "the clocks", "the first words",
 		"the GMU's RPMh sequencer", "the SMMU", "an SMMU context", "the GMU's memory", "TrustZone", "the zap shader's header",

@@ -82,7 +82,7 @@ diff --git a/bsd/conf/Makefile.arm64 b/bsd/conf/Makefile.arm64
 diff --git a/bsd/conf/files b/bsd/conf/files
 --- a/bsd/conf/files
 +++ b/bsd/conf/files
-@@ -108,6 +108,62 @@ bsd/dev/munge.c 			optional config_requires_u32_munging
+@@ -108,6 +108,63 @@ bsd/dev/munge.c 			optional config_requires_u32_munging
  bsd/dev/unix_startup.c			standard
  
  bsd/dev/monotonic.c         optional config_cpu_counters
@@ -114,6 +114,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
 +bsd/dev/board/ddr.c	standard
 +bsd/dev/board/bench.c	standard
 +bsd/dev/board/adreno.c	standard
++bsd/dev/board/adreno_a618.c	standard
 +bsd/dev/board/audio.c	standard
 +bsd/dev/board/virtio_sound.c	standard
 +bsd/dev/board/speaker.c	standard
@@ -145,7 +146,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
  
  bsd/libkern/crc32.c			standard
  bsd/libkern/random.c			standard
-@@ -155,6 +211,14 @@ bsd/miscfs/devfs/devfs_vfsops.c		optional devfs
+@@ -155,6 +212,14 @@ bsd/miscfs/devfs/devfs_vfsops.c		optional devfs
  bsd/miscfs/mockfs/mockfs_fsnode.c	optional mockfs
  bsd/miscfs/mockfs/mockfs_vfsops.c	optional mockfs
  bsd/miscfs/mockfs/mockfs_vnops.c	optional mockfs
@@ -160,7 +161,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
  
  bsd/miscfs/routefs/routefs_ops.c	optional routefs
  
-@@ -380,6 +444,7 @@ bsd/security/audit/audit_syscalls.c		standard
+@@ -380,6 +445,7 @@ bsd/security/audit/audit_syscalls.c		standard
  bsd/security/audit/audit_worker.c		optional config_audit
  
  bsd/pthread/pthread_shims.c		standard
@@ -168,7 +169,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
  bsd/pthread/pthread_priority.c		standard
  bsd/pthread/pthread_workqueue.c		standard
  
-@@ -403,6 +468,7 @@ bsd/kern/kern_debug.c			standard
+@@ -403,6 +469,7 @@ bsd/kern/kern_debug.c			standard
  bsd/kern/kern_symfile.c			standard
  bsd/kern/kern_descrip.c			standard
  bsd/kern/kern_guarded.c			standard
