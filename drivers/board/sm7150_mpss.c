@@ -76,6 +76,7 @@ extern int hakios_rpmh_ddr_vote(uint32_t vote, bool send);
 extern uint64_t kvtophys(vm_offset_t va);
 extern kern_return_t thread_terminate(thread_t);
 void hakios_mpss_sm7150_start(void);
+static void ew_if_create(void);
 
 /* sm7150-google-sunfish.dts: mpss_mem */
 #define MPSS_MEMORY             0x8b000000ull
@@ -8061,6 +8062,13 @@ hakios_mpss_sm7150_start(void)
 		hakios_say("mpss: mpss=%u, but this board's board.dts does not list wifi-wcn3990: nothing started\n", enable);
 		return;
 	}
+	/*
+	 * en0 and its registry entries now, the link down, before launchd: configd's interface namer and wifid look for the
+	 * interfaces once, as they start, and the radio comes up a minute and a half later. Made only then (as on 16.5),
+	 * configd never took en0 up nor ran DHCP on it after a join (0 frames sent, no SIOCSIFFLAGS). The same as the
+	 * Galaxy S7 port's herolte_wifi_early() and apollo's (wardevsa/ios-a5xelte).
+	 */
+	ew_if_create();
 	started = true;
 	PE_parse_boot_argn("wlanprobe", &g_wlan_probe, sizeof(g_wlan_probe));
 	PE_parse_boot_argn("mpss_log", &g_ev_log, sizeof(g_ev_log));
