@@ -192,6 +192,14 @@ config TOUCH_FTS
 	help
 	  A FocalTech FT3658U on a serial engine as SPI (board/fts.c, the board's "touch-ft3658u").
 
+config BATTERY_PM6150
+	bool "The battery read off a PM6150 (the Pixel 4a)"
+	default y
+	help
+	  The battery's voltage, current and charger state read off the PM6150's BMS and charger blocks through the PMIC
+	  arbiter, an estimated percentage from them, handed to Darwin's power source (board/pm6150_battery.c, the board's
+	  "battery-pm6150", boot-arg pm6150_battery=1). Only reads.
+
 config TOUCH_FTM5
 	bool "The ST FTM5 touch screen of the Pixel 4a, on I2C"
 	default y

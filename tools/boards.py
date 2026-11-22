@@ -187,7 +187,7 @@ FEATURE_NEEDS = {'bluetooth-wcn-uart': ('pins', 'clocks', 'rpmh', 'spmi'), 'virt
                  # the part drivers that drive the SoC's pins, switch a bus's clocks on in the GCC, ask RPMh
                  # for a part's supply, and give a device its addresses in the SMMU
                  'touch-goodix': ('pins', 'clocks', 'rpmh'), 'touch-ft3658u': ('pins', 'clocks', 'rpmh'),
-                 'touch-ft5x06': ('pins',), 'touch-ftm5': ('spmi',),      # (and rpmh, if its touch_i2c names a supply: feature_needs())
+                 'touch-ft5x06': ('pins',), 'touch-ftm5': ('spmi',), 'battery-pm6150': ('spmi',),      # (and rpmh, if its touch_i2c names a supply: feature_needs())
                  'speaker-aw88261': ('pins', 'clocks', 'rpmh', 'smmu'), 'haptic-aw86927': ('pins',),
                  'imu-lsm6dso': ('pins',), 'imu-bmi160': ('pins',),
                  'adsp': ('rpmh', 'ipc'), 'wifi-wcn6750': ('rpmh', 'pins', 'spmi', 'ipc', 'smmu'), 'mic-wcd938x': ('pins', 'lpass')}
@@ -211,6 +211,7 @@ FEATURE_BOOTARGS = {
     'touch-ft3658u': 'touchscreen=1',
     'touch-ft5x06': 'touchscreen=-1 looks; touchscreen=1',
     'touch-ftm5': 'touchscreen=1 (touch_delay=N: seconds first)',
+    'battery-pm6150': 'pm6150_battery=1',
     'speaker-aw88261': 'speaker_probe=N looks; sound=N with adsp=1',
     'haptic-aw86927': 'haptic=N',
     'imu-lsm6dso': 'sensors=1 looks; sensors=2 follows the orientation',

@@ -26,7 +26,8 @@
 #include "log.h"
 
 extern void hakios_bt_uart_init(void);
-extern void hakios_ftm5_init(void);              /* bsd/dev/board/ftm5.c */
+extern void hakios_ftm5_init(void);
+extern void hakios_pm6150_battery_init(void);     /* bsd/dev/board/pm6150_battery.c */              /* bsd/dev/board/ftm5.c */
 extern void hakios_scmi_perf_init(void);
 extern void hakios_prof_start(void);            /* osfmk/arm64/prof.c */
 extern void hakios_backlight_init(void);        /* bsd/dev/board/backlight.c */
@@ -105,6 +106,9 @@ hakios_drivers_init(void)
 	}
 	if (CONFIG_BATTERY_FROM_LOADER) {
 		hakios_battery_init();  /* boot-arg battery=1: the charger's state, from the loader */
+	}
+	if (CONFIG_BATTERY_PM6150 && hakios_board_has(HAKIOS_HAS_BATTERY_PM6150)) {
+		hakios_pm6150_battery_init();  /* boot-arg pm6150_battery=1: the battery off a PM6150's BMS */
 	}
 	if (CONFIG_QCOM_UFS) {
 		hakios_ufs_init();  /* the phone's storage, read only */
