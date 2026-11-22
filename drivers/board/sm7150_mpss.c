@@ -5204,7 +5204,18 @@ ew_a80211_link_events(void)
 	}
 	ew_a80211_event(2, z, 8);
 	ew_a80211_event(3, z, 0);
-	ew_a80211_event(9, aev, 16);
+	/*
+	 * ASSOC_DONE with nothing after the interface's name, as drivers/board/apple80211.c posts it for Darwin 26/27: wifid
+	 * then asks ASSOCIATE_RESULT (21) for the outcome. With 16 bytes here (the access point's address where 16.5's struct
+	 * has {status, reason}) Darwin 27's never asked, and Settings said the join failed after ~30 s although the station
+	 * had joined. boot-arg assoc_done_payload=1 brings the 16 bytes back.
+	 */
+	{
+		uint32_t old = 0;
+
+		PE_parse_boot_argn("assoc_done_payload", &old, sizeof(old));
+		ew_a80211_event(9, old ? aev : NULL, old ? 16 : 0);
+	}
 	ew_a80211_event(4, z, 32);
 }
 
@@ -5662,10 +5673,11 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 			 * The key's block: 16.5 (592 bytes) has its version at 0x38, length 0x3c, kind 0x40, the key at 0x48. Darwin 27 (656)
 			 * has 4 bytes more before it -- version 0x3c, length 0x40, kind 0x44, key 0x4c: its _performAssociation clears the
 			 * block from 0x3c, and read at 16.5's places a join said "a key of 1 byte of kind 32" (version 1, length 32).
-			 * The name (length 0xc, bytes 0x10) is where it was.
+			 * The name moved the same 4 bytes (its length 0x10, its bytes 0x14; at 0xc Darwin 27 has the kind of authentication,
+			 * 8 for WPA2 with a passphrase): assoc_map=1 showed a length of 21 at 0x10 and 21 bytes of text from 0x14.
 			 */
 			k = rq->req_len >= 0x290 ? 4 : 0;
-			memcpy(&slen, a + 0xc, 4);
+			memcpy(&slen, a + 0xc + k, 4);
 			memcpy(&klen, a + 0x3c + k, 4);
 			memcpy(&cipher, a + 0x40 + k, 4);
 			ev("A80211: ASSOCIATE (%u bytes): name of %u bytes, key of %u bytes of kind %u", rq->req_len, slen, klen, cipher);
@@ -5674,10 +5686,10 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 				break;
 			}
 			memset(&g_ujoin_new, 0, sizeof(g_ujoin_new));
-			memcpy(g_ujoin_new.ssid, a + 0x10, slen);
+			memcpy(g_ujoin_new.ssid, a + 0x10 + k, slen);
 			g_ujoin_new.ssid_len = (uint8_t)slen;
 			if (cipher == 10 && klen >= 8 && klen <= 63) {
-				ujoin_pmk(a + 0x48 + k, klen, a + 0x10, slen, g_ujoin_new.pmk);
+				ujoin_pmk(a + 0x48 + k, klen, a + 0x10 + k, slen, g_ujoin_new.pmk);
 			} else if (cipher == 6 && klen == 32) {
 				memcpy(g_ujoin_new.pmk, a + 0x48 + k, 32);
 			} else {
@@ -5727,7 +5739,16 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 	{
 		unsigned i;
 
+		static uint32_t log_all = 2;
+
+		if (log_all == 2) {
+			log_all = 0;
+			PE_parse_boot_argn("a80211_log", &log_all, sizeof(log_all));   /* every request and its answer, not only new ones */
+		}
 		for (i = 0; i < nseen && seen[i] != key; i++) {
+		}
+		if (log_all && rq->req_type != 103) {
+			ev("A80211: %s %u len %u -> %d val %u", set ? "set" : "get", rq->req_type, rq->req_len, err, rq->req_val);
 		}
 		if (i == nseen && nseen < 128) {
 			seen[nseen++] = key;
