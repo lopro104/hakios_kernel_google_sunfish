@@ -466,6 +466,21 @@ mpss_start(void)
 			goto skip_shutdown;
 		}
 	}
+	/*
+	 * (boot-arg mpss_shutdown_after=S: not before S seconds of uptime. Under the 16.5 kernel this call came 33 s in -- the
+	 * firmware appeared only once init had mounted it -- and answered at once; here, seconds in, it never came back)
+	 */
+	{
+		uint32_t after = 0;
+		uint64_t now_ns;
+
+		PE_parse_boot_argn("mpss_shutdown_after", &after, sizeof(after));
+		absolutetime_to_nanoseconds(mach_absolute_time(), &now_ns);
+		if (after != 0 && now_ns / NSEC_PER_SEC < after) {
+			hakios_say("mpss: the shutdown call waits until %u s of uptime (now %llu s)\n", after, now_ns / NSEC_PER_SEC);
+			delay_for_interval((uint32_t)(after - now_ns / NSEC_PER_SEC), NSEC_PER_SEC);
+		}
+	}
 	/* A modem image left by an earlier boot is given up first. */
 	(void)scm("to give up a modem image it may hold", SCM_64 | SCM_SIP | SCM_PAS_SHUTDOWN, SCM_ONE_VALUE, PAS_MODEM, 0, 0,
 	    &answer);
@@ -5598,8 +5613,8 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 		if (set) {
 			/* apple80211_assoc, 592 bytes: ssid_length @0xc, ssid @0x10, bssid @0x30, key_length @0x3c, key_cipher @0x40 (10: the passphrase as typed,
 			 * 6: the PMK), key @0x48 */
-			uint8_t a[0x88];
-			uint32_t slen, klen, cipher;
+			uint8_t a[0x90];
+			uint32_t slen, klen, cipher, k;
 
 			if (rq->req_len < sizeof(a) || copyin((user_addr_t)rq->req_data, a, sizeof(a)) != 0) {
 				err = EINVAL;
@@ -5643,10 +5658,17 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 					}
 				}
 			}
+			/*
+			 * The key's block: 16.5 (592 bytes) has its version at 0x38, length 0x3c, kind 0x40, the key at 0x48. Darwin 27 (656)
+			 * has 4 bytes more before it -- version 0x3c, length 0x40, kind 0x44, key 0x4c: its _performAssociation clears the
+			 * block from 0x3c, and read at 16.5's places a join said "a key of 1 byte of kind 32" (version 1, length 32).
+			 * The name (length 0xc, bytes 0x10) is where it was.
+			 */
+			k = rq->req_len >= 0x290 ? 4 : 0;
 			memcpy(&slen, a + 0xc, 4);
-			memcpy(&klen, a + 0x3c, 4);
-			memcpy(&cipher, a + 0x40, 4);
-			ev("A80211: ASSOCIATE: name of %u bytes, key of %u bytes of kind %u", slen, klen, cipher);
+			memcpy(&klen, a + 0x3c + k, 4);
+			memcpy(&cipher, a + 0x40 + k, 4);
+			ev("A80211: ASSOCIATE (%u bytes): name of %u bytes, key of %u bytes of kind %u", rq->req_len, slen, klen, cipher);
 			if (slen == 0 || slen > 32 || g_ujoin_pending) {
 				err = EINVAL;
 				break;
@@ -5655,9 +5677,9 @@ ew_a80211(bool set, struct sweet_a80211req *rq)
 			memcpy(g_ujoin_new.ssid, a + 0x10, slen);
 			g_ujoin_new.ssid_len = (uint8_t)slen;
 			if (cipher == 10 && klen >= 8 && klen <= 63) {
-				ujoin_pmk(a + 0x48, klen, a + 0x10, slen, g_ujoin_new.pmk);
+				ujoin_pmk(a + 0x48 + k, klen, a + 0x10, slen, g_ujoin_new.pmk);
 			} else if (cipher == 6 && klen == 32) {
-				memcpy(g_ujoin_new.pmk, a + 0x48, 32);
+				memcpy(g_ujoin_new.pmk, a + 0x48 + k, 32);
 			} else {
 				memset(a, 0, sizeof(a));
 				err = EINVAL;
