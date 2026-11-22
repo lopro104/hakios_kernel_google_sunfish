@@ -2638,7 +2638,7 @@ int FakeGpu::call(uint32_t request, void* data, size_t size) {
         case kParamHighestBankBit: p->value = 14; return 0;
         case kParamRaytracing: p->value = 0; return 0;
         case kParamUbwcSwizzle: p->value = 6; return 0;
-        case kParamMacrotileMode: p->value = 1; return 0;
+        case kParamMacrotileMode: p->value = a6xx::kA618 ? 0 : 1; return 0;
         default: return EINVAL;                                      // (kIOReturnBadArgument there: VA_START, VA_SIZE among them)
         }
     }

@@ -15,6 +15,11 @@ CXXFLAGS  ?= -O2 -g
 # `override`: a CXXFLAGS given on the command line replaces the variable, and the flags below used to go with it
 # (make test CXXFLAGS=-O1 then found no headers)
 override CXXFLAGS += -std=c++17 -Wall -Wextra -Werror -Iinclude
+# CHIP=618: the tables of the Adreno 618 (the Pixel 4a's, Mesa's a6xx gen1) instead of the A635's (include/hakios-metal/a6xx.hpp)
+CHIP      ?=
+ifeq ($(strip $(CHIP)),618)
+override CXXFLAGS += -DHAKIOS_METAL_A618=1
+endif
 SAN       ?=
 ifneq ($(SAN),)
 override CXXFLAGS += -fsanitize=$(SAN) -fno-omit-frame-pointer
@@ -99,6 +104,9 @@ darwin: ios
 
 # with MESA=1 the compiler goes to the phone too, against the iOS build of Mesa's libraries (IOS_MESA_BUILD, tools/compiler.mk)
 IOS_CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -Werror
+ifeq ($(strip $(CHIP)),618)
+IOS_CXXFLAGS += -DHAKIOS_METAL_A618=1
+endif
 IOS_LIBS     =
 ifneq ($(strip $(MESA)),)
 IOS_CXXFLAGS += -DHAKIOS_METAL_MESA $(HAKIOS_METAL_IOS_MESA_CXXFLAGS)
