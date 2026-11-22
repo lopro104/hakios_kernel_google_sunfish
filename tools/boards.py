@@ -91,7 +91,7 @@ SOC_SCHEMA = {
     'clocks': {'gcc': (int, True), 'gcc_disp_ahb_cbcr': (int, False), 'dispcc': (int, False),
                'dispcc_mdss_gdscr': (int, False), 'dispcc_mdss_ahb_cbcr': (int, False),
                'dispcc_mdss_pclk0_cbcr': (int, False), 'dispcc_mdss_mdp_cbcr': (int, False)},
-    'display': {'dsi0': (int, True), 'intf1': (int, False)},
+    'display': {'dsi0': (int, True), 'intf1': (int, False), 'pingpong': (int, False)},
     'thermal': {'tsens': ([int], True)},
     'spmi': {'core': (int, True), 'cnfg': (int, True), 'observer': (int, True), 'channels': (int, False),
              'ee': (int, False), 'channel_map': (int, False), 'bus': (int, False)},
@@ -976,8 +976,9 @@ def table_text(socs, boards):
                 out.append(f'\t\t\t.dispcc_mdss_pclk0_cbcr = {clocks.get("dispcc_mdss_pclk0_cbcr", 0):#x}, '
                            f'.dispcc_mdss_mdp_cbcr = {clocks.get("dispcc_mdss_mdp_cbcr", 0):#x},')
             out.append('\t\t},')
-        if 'intf1' in soc.get('display', {}):
-            out.append(f'\t\t.display = {{ .intf = {soc["display"]["intf1"]:#010x} }},')
+        shown = soc.get('display', {})
+        if 'intf1' in shown or 'pingpong' in shown:
+            out.append(f'\t\t.display = {{ .intf = {shown.get("intf1", 0):#010x}, .pingpong = {shown.get("pingpong", 0):#010x} }},')
         kind = {'dcs': 'HAKIOS_BACKLIGHT_DCS', 'soft': 'HAKIOS_BACKLIGHT_SOFT'}.get(light.get('type'), 'HAKIOS_BACKLIGHT_NONE')
         if dcs:
             out += [

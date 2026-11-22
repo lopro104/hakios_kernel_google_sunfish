@@ -27,6 +27,9 @@
 	display {
 		dsi0 = <0x0ae94000>;            // the first DSI controller (cell-index 0), reg "dsi_ctrl"
 		intf1 = <0x0ae6b800>;           // optional, for "display-scan": the same node's reg "mdp_intf_base"
+		pingpong = <0x0ae71000>;        // optional, for a command-mode panel (panel_autorefresh=1, cmdpanel.c):
+		                                // PINGPONG_0's registers, the DPU catalog's (Linux dpu_*_SOC.h: MDP base +
+		                                // the pingpong's offset); the others follow at 0x800
 	};
 
 	// The SoC's own pins (TLMM), for the part drivers that drive them: the touch controllers', the speaker

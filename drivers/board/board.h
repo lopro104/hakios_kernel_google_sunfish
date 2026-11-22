@@ -108,6 +108,8 @@ struct hakios_board {
 	/* the display controller (soc: display { }) */
 	struct {
 		uint32_t intf;                  /* the interface the panel hangs on (INTF_*): its timing and counters */
+		uint32_t pingpong;              /* PINGPONG_0's registers (PINGPONG_n 0x800 n further): a command-mode
+		                                 * panel's tear check and autorefresh (cmdpanel.c); 0: not known */
 	} display;
 
 	/* the panel's light (board: backlight { }; soc: display { }) */
