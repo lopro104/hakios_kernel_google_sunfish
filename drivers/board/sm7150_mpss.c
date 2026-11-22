@@ -6608,6 +6608,9 @@ wlan_station_loop(void)
 			g_ujoin_valid = 1;
 		}
 		for (unsigned att = 0; att < 4 && !found && !g_wlan_crashed && !g_modem_crashed; att++) {
+			if (att > 0 && g_ujoin_pending && !g_ujoin_valid) {
+				break;          /* a join Settings asked for came while this one (the stored network) went on: that one first */
+			}
 			wp_scan();
 			wp_fault_check("scan");
 			if (!wp.scan_done) {
@@ -6627,7 +6630,8 @@ wlan_station_loop(void)
 			if (jn.active) {
 				jn_cleanup();
 			}
-			for (unsigned t = 0; t < 5000 && !g_wlan_crashed && !g_modem_crashed; t += 10) {
+			/* (a join asked for in Settings ends the wait: wifid gives a join some seconds, and it came during this attempt) */
+			for (unsigned t = 0; t < 5000 && !g_wlan_crashed && !g_modem_crashed && !g_ujoin_pending; t += 10) {
 				wp_poll();
 				sleep_ms(10);
 			}
