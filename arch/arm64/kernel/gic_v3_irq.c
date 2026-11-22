@@ -26,6 +26,7 @@
  */
 #include <mach/mach_types.h>
 #include <kern/debug.h>
+#include <kern/startup.h>
 #include <kern/simple_lock.h>
 #include <os/atomic_private.h>
 #include <arm/cpu_data_internal.h>
@@ -75,7 +76,13 @@
 
 #define GIC_SGI_SIGNAL          0           /* cpu_signal(): another processor wants this one's attention */
 #define GIC_SGI_STOP            1           /* psci_smp_stop_here(): the system is going back to the boot loader */
-#define GIC_INTID_VTIMER        27          /* EL1 virtual timer PPI */
+/*
+ * The EL1 virtual timer's PPI: 27 on most phones and in QEMU. Boot-arg vtimer_intid=N for one where the device tree's
+ * arm,armv8-timer says otherwise (its third entry, 16 + the number): the Pixel 4a's SM7150 has 19. On a wrong one the
+ * kernel runs on until its first timed wait and never wakes from it, without a word.
+ */
+static TUNABLE(uint32_t, gic_vtimer_intid, "vtimer_intid", 27);
+#define GIC_INTID_VTIMER        (gic_vtimer_intid >= 16 && gic_vtimer_intid < 32 ? gic_vtimer_intid : 27)
 #define GIC_INTID_SPI_MIN       32
 #define GIC_INTID_SPURIOUS_MIN  1020
 #define GIC_INTID_SPURIOUS_MOST 1023        /* 1020 to 1023 are no interrupt; above them there are others */
