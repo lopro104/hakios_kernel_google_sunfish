@@ -120,8 +120,9 @@ format_with(void (*put)(char, void *), void *to, const char *fmt, __builtin_va_l
 			while (*s) {
 				put(*s++, to);
 			}
-		} else if (*fmt == 'x' || *fmt == 'd') {
-			uint64_t v = __builtin_va_arg(ap, uint64_t);
+		} else if (*fmt == 'x' || *fmt == 'd' || *fmt == 'u') {
+			/* %x and %d take 64 bits; %u an unsigned int (32): a %u that took 64 shifted every argument after it */
+			uint64_t v = (*fmt == 'u') ? __builtin_va_arg(ap, unsigned) : __builtin_va_arg(ap, uint64_t);
 			unsigned base = (*fmt == 'x') ? 16 : 10;
 			char tmp[24];
 			int i = 0;
