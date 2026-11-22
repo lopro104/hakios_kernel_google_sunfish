@@ -26,6 +26,7 @@
 #include "log.h"
 
 extern void hakios_bt_uart_init(void);
+extern void hakios_ftm5_init(void);              /* bsd/dev/board/ftm5.c */
 extern void hakios_scmi_perf_init(void);
 extern void hakios_prof_start(void);            /* osfmk/arm64/prof.c */
 extern void hakios_backlight_init(void);        /* bsd/dev/board/backlight.c */
@@ -50,6 +51,12 @@ touch_controller_init(void)
 			hakios_ft5x06_init();
 		} else {
 			hakios_say("touch: this board's FocalTech FT5x06-family touch screen has no driver in this kernel (CONFIG_TOUCH_FT5X06)\n");
+		}
+	} else if (hakios_board_has(HAKIOS_HAS_TOUCH_FTM5)) {
+		if (CONFIG_TOUCH_FTM5) {
+			hakios_ftm5_init();
+		} else {
+			hakios_say("touch: this board's ST FTM5 touch screen has no driver in this kernel (CONFIG_TOUCH_FTM5)\n");
 		}
 	} else if (hakios_board_has(HAKIOS_HAS_TOUCH_GOODIX)) {
 		if (CONFIG_TOUCH_GOODIX) {

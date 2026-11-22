@@ -187,7 +187,7 @@ FEATURE_NEEDS = {'bluetooth-wcn-uart': ('pins', 'clocks', 'rpmh', 'spmi'), 'virt
                  # the part drivers that drive the SoC's pins, switch a bus's clocks on in the GCC, ask RPMh
                  # for a part's supply, and give a device its addresses in the SMMU
                  'touch-goodix': ('pins', 'clocks', 'rpmh'), 'touch-ft3658u': ('pins', 'clocks', 'rpmh'),
-                 'touch-ft5x06': ('pins',),      # (and rpmh, if its touch_i2c names a supply: feature_needs())
+                 'touch-ft5x06': ('pins',), 'touch-ftm5': ('spmi',),      # (and rpmh, if its touch_i2c names a supply: feature_needs())
                  'speaker-aw88261': ('pins', 'clocks', 'rpmh', 'smmu'), 'haptic-aw86927': ('pins',),
                  'imu-lsm6dso': ('pins',), 'imu-bmi160': ('pins',),
                  'adsp': ('rpmh', 'ipc'), 'wifi-wcn6750': ('rpmh', 'pins', 'spmi', 'ipc', 'smmu'), 'mic-wcd938x': ('pins', 'lpass')}
@@ -210,6 +210,7 @@ FEATURE_BOOTARGS = {
     'touch-goodix': 'touchscreen=1',
     'touch-ft3658u': 'touchscreen=1',
     'touch-ft5x06': 'touchscreen=-1 looks; touchscreen=1',
+    'touch-ftm5': 'touchscreen=1 (touch_delay=N: seconds first)',
     'speaker-aw88261': 'speaker_probe=N looks; sound=N with adsp=1',
     'haptic-aw86927': 'haptic=N',
     'imu-lsm6dso': 'sensors=1 looks; sensors=2 follows the orientation',
@@ -230,7 +231,7 @@ FEATURE_NEEDS_OF_BOARD = {'bluetooth-wcn-uart': 'bluetooth', 'gpu-a660': 'gpu', 
 # ... and what a controller's driver uses of [touch] beyond what every one needs
 TOUCH_NEEDS = {'touch-goodix': ('analog_enable', 'vendor_pins', 'coordinates'), 'touch-ft3658u': ('analog_supply',)}
 # the touch controllers' drivers, each a feature: a board has one controller (board/drivers.c starts one)
-TOUCH_CHIPS = ('touch-goodix', 'touch-ft3658u', 'touch-ft5x06')
+TOUCH_CHIPS = ('touch-goodix', 'touch-ft3658u', 'touch-ft5x06', 'touch-ftm5')
 # what a chip of the FT5x06 family can say (board/ft5x06_report.h): so many fingers, coordinates of 12 bits; and the
 # analog supply its data sheets allow, 2.6 to 3.6 V
 FT5X06_CONTACTS, FT5X06_COORDINATE_MAX, FT5X06_ANALOG_MV = 10, 0xfff, (2600, 3600)

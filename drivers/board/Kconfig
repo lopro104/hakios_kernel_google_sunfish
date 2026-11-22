@@ -192,6 +192,13 @@ config TOUCH_FTS
 	help
 	  A FocalTech FT3658U on a serial engine as SPI (board/fts.c, the board's "touch-ft3658u").
 
+config TOUCH_FTM5
+	bool "The ST FTM5 touch screen of the Pixel 4a, on I2C"
+	default y
+	help
+	  An in-cell ST FTM5 at I2C address 0x49 on the SoC's serial engine 7 driven in FIFO mode (board/ftm5.c, the board's
+	  "touch-ftm5"), polled 100 times a second. Its addresses are the Pixel 4a's. No firmware is uploaded.
+
 config TOUCH_FT5X06
 	bool "FocalTech FT5x06-family touch screens on I2C"
 	default y
