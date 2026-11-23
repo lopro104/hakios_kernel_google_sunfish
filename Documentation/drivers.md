@@ -188,6 +188,21 @@ driver's work (`cancel_work_sync`) as before.
 | `bsd/dev/board/ufs.c`, `board/ufshc.c` | The phone's UFS: through the resident UEFI's driver, or the host controller directly (read only). | Through UEFI: any phone the loader runs on. Directly: where the controller is is data (`ufs` in `platform { }` of the SoC file), the controller is taken to be Qualcomm's, as on the SM7325 and SM7350 |
 | `bsd/dev/board/sparse.c`, `board/virtio_blk.c`, `board/apfs_check.c` | An image with only some of its blocks; QEMU's block device; a walk of a volume for comparison with the host tools. | any |
 
+## The Google Pixel 4a's own (sunfish, SM7150)
+
+Ported from the Darwin 16.5 port of the phone (lopro104/hakios_device_google_sunfish, branch `sunfish-27`, which also
+carries the board package `darwin26/`). Each starts only on a board that lists its feature. Seen on the phone under
+iOS 27.2 (24B119), 2026-11-22/23.
+
+| File | What | Portability |
+| --- | --- | --- |
+| `osfmk/arm64/gic_v3_irq.c` | `vtimer_intid=N`: the EL1 virtual timer's PPI where the tree's `arm,armv8-timer` is not 27 (19 on the SM7150). | any |
+| `bsd/dev/board/cmdpanel.c` | A command-mode DSI panel's autorefresh (`panel_autorefresh=1`), so the screen follows the framebuffer; SoC file `display { pingpong }`. | data |
+| `bsd/dev/board/ftm5.c` | The ST FTM5 touch screen on I2C serial engine 7 (`touch-ftm5`, `touchscreen=1`). | phone |
+| `bsd/dev/board/pm6150_battery.c` | The battery off the PM6150's BMS and charger (`battery-pm6150`, `pm6150_battery=1`), handed on by `hakios_battery_report()`. | phone |
+| `bsd/dev/board/sm7150_mpss.c`, `sm7150_wlan_util.c`, `sm7150_rpmh.c` | The modem through TrustZone (SMEM, SMP2P, GLINK, QRTR, rmtfs, TFTP), WLFW and the WCN3990 (HTC/WMI/HTT, scan, WPA2 join) on en0 (`wifi-wcn3990`, `mpss=1 wlanprobe=8 mpss_no_shutdown=1`); `apple80211.c` hands Apple80211 requests to it. Darwin 27's ASSOCIATE (656 bytes) and ASSOC_DONE (540 bytes) layouts; en0 made before launchd. | phone |
+| `bsd/dev/board/adreno_a618.c` | The Adreno 618 (`gpu-a618`, `gpu=1`): 21 steps to the 3D core and the zap shader; `adreno.c` hands its entry points over. With the Metal plug-in built `CHIP=618` CoreAnimation draws on it, Liquid Glass included. | phone |
+
 ## Which of them run on the host
 
 These drivers are compiled unchanged into a host program and run against a model of their hardware

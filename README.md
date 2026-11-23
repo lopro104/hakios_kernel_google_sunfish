@@ -6,6 +6,24 @@ Qualcomm phones and in QEMU: our loader, our drivers, and stand-ins for Apple's 
 Nothing of Apple's is in this repository: no firmware, no IPSW, no system images, no screenshots. They are made
 on your machine from files you have.
 
+## This branch: the Google Pixel 4a (sunfish, SM7150), iOS 27.2
+
+Branch `sunfish-27` of lopro104/hakios_kernel_google_sunfish is upstream's `common` with the Pixel 4a's drivers.
+The board package is in lopro104/hakios_device_google_sunfish (branch `sunfish-27`, directory `darwin26/`), with
+how to boot it. On the phone, iOS 27.2 (24B119), November 2026:
+
+| What | State |
+| --- | --- |
+| Boot | From RAM (`fastboot boot`, nothing flashed); the system volume is an Android DSU image (`ufs=2`, `init/stage0dsu.c`). Lock screen about 80 s after the kernel starts. |
+| CPU | All 8 cores, OSM frequency scaling (`cpufreq=1`). |
+| Display | The command-mode panel through `panel_autorefresh=1`. No brightness control yet. |
+| Touch, buttons, battery | FTM5 touch screen, power and volume keys, battery level from the PM6150. |
+| Wi-Fi | The modem and the WCN3990: scan, WPA2 join from Settings, DHCP, Safari, SSH. Stopping the modem hangs (`mpss_no_shutdown=1`). |
+| GPU | The Adreno 618 and the Metal plug-in built `CHIP=618`: backboardd draws with Metal, Liquid Glass included (`gpu=1 metal=1 metal_procs=backboardd`). SpringBoard and apps still draw in software. |
+| Not yet | Brightness, flashlight, sound, camera, cellular, Bluetooth, the system on the phone's own partition. |
+
+The drivers are listed in [Documentation/drivers.md](Documentation/drivers.md#the-google-pixel-4as-own-sunfish-sm7150).
+
 ## Where things are
 
 | Directory | What |
