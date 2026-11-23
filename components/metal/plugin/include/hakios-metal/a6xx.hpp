@@ -1419,6 +1419,11 @@ inline constexpr uint32_t kSysmemPerCcuDepthCacheSize = 0x10000;  // not-in-head
 inline constexpr uint32_t kSysmemPerCcuColorCacheSize = 0x10000;  // not-in-headers: freedreno_devices.h __info14 .sysmem_per_ccu_color_cache_size (65536)
 // tiled rendering: the on-chip memory and the tile grid (a6xx_gen4 / adreno_7c3 in freedreno_devices.py)
 inline constexpr uint32_t kGmemBytes = 512 * 1024;                // not-in-headers: freedreno_devices.py adreno_7c3 gmem_size (Linux a6xx_gpu adreno_7c3 SZ_512K)
+// Where GMEM is in the GPU's address space for the texture unit and the 2D engine (UCHE_GMEM_RANGE_MIN; the kernel's
+// GMEM_BASE): 0 on the A650 family, which the A635 is, and 1 MiB on the A6xx before it, which the A618 is (Linux
+// a6xx_gpu.c uche_gmem_base; turnip adds it to every GMEM address it gives the TP or the 2D engine). The RB's own
+// RB_MRT_BASE_GMEM is an offset and takes no base.
+inline constexpr uint32_t kGmemBase = kA618 ? 0x00100000u : 0u;
 inline constexpr uint32_t kGmemCcuColorCacheFraction = 4;          // not-in-headers: freedreno_devices.py a6xx_gen4 gmem_ccu_color_cache_fraction QUARTER
 inline constexpr uint32_t kTileAlignW = 32, kTileAlignH = kA618 ? 32 : 16;      // not-in-headers: freedreno_devices.py a6xx_gen4 tile_align_w/h
 inline constexpr uint32_t kGmemAlignW = 16, kGmemAlignH = 4;       // not-in-headers: freedreno_devices.py a6xx_gen4 gmem_align_w/h (the event blit's granule)

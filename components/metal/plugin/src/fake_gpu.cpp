@@ -583,6 +583,7 @@ bool FakeGpu::check2d(const uint32_t* d, const char* what, uint32_t i, bool samp
     const uint32_t tile = fieldOf(d[0], A6XX_TEX_CONST_0_TILE_MODE__MASK, A6XX_TEX_CONST_0_TILE_MODE__SHIFT);
     // (GMEM's layout first: its rows are the bin's, not the image's)
     if (tile == TILE6_2) {
+        base -= a6xx::kGmemBase;   // (an address in GMEM, from its base: 1 MiB on the A618)
         // a bin in GMEM (a framebuffer fetch in a tile, tu_emit_input_attachments): sampled, in a tile, a 2D of one
         // layer whose rows are the bin's, below the CCU's colour cache -- nothing of memory is read
         uint32_t binW = 0, binH = 0, win[4] = {};
