@@ -59,6 +59,7 @@
  * then the boot-args above do the same, and a board not described at all gets backend soft.
  */
 #include <kern/clock.h>
+#include <kern/startup.h>
 #include <kern/locks.h>
 #include <kern/sched_prim.h>
 #include <kern/thread.h>
@@ -362,6 +363,9 @@ int_clear(uint32_t bits)
  * to take that for what was found and put it back so.
  */
 static bool found_known, found_cmd_mode;
+/* boot-arg bl_log=1: each brightness sent said, the first 40 (whether the slider reaches the panel at all) */
+static TUNABLE(uint32_t, bl_log, "bl_log", 0);
+static uint32_t bl_logged;
 static uint32_t found_dma_control;
 
 static bool
@@ -440,6 +444,11 @@ dcs_send(uint32_t raw)
 		return false;
 	}
 	unsent = 0;
+	if (bl_log && bl_logged < 40) {
+		bl_logged++;
+		say("backlight: dcs: brightness %u sent (%llu us, words %#x %#x, status was %#x)\n", raw,
+		    (unsigned long long)(now_us() - began), words[0], words[1], rd(dsi + DSI_STATUS));
+	}
 	/* said once, not again for every command after it while the controller keeps saying it */
 	error = (rd(dsi + DSI_INT_CTRL) & INT_ERROR) != 0;
 	if (error && !error_said) {

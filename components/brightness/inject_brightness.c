@@ -66,10 +66,40 @@ write_value(const char *name, int value)
 }
 
 /* a number or a boolean, as a double; false if it is neither */
+/* (a dictionary's first number, for number_of) */
+static void
+first_number(const void *key __attribute__((unused)), const void *value, void *context)
+{
+	double *found = context;
+
+	if (found[1] == 0 && value != NULL && CFGetTypeID(value) == CFNumberGetTypeID() &&
+	    CFNumberGetValue((CFNumberRef)value, kCFNumberDoubleType, &found[0])) {
+		found[1] = 1;
+	}
+}
+
 static bool
 number_of(CFTypeRef value, double *out)
 {
 	if (value == NULL) {
+		return false;
+	}
+	/*
+	 * Darwin 27 sets DisplayBrightness as a dictionary (the slider's value with what moved it): its "Brightness", or
+	 * else the first number in it.
+	 */
+	if (CFGetTypeID(value) == CFDictionaryGetTypeID()) {
+		CFTypeRef named = CFDictionaryGetValue((CFDictionaryRef)value, CFSTR("Brightness"));
+		double found[2] = { 0, 0 };
+
+		if (named != NULL && CFGetTypeID(named) == CFNumberGetTypeID()) {
+			return CFNumberGetValue((CFNumberRef)named, kCFNumberDoubleType, out);
+		}
+		CFDictionaryApplyFunction((CFDictionaryRef)value, first_number, found);
+		if (found[1] != 0) {
+			*out = found[0];
+			return true;
+		}
 		return false;
 	}
 	if (CFGetTypeID(value) == CFBooleanGetTypeID()) {
@@ -91,7 +121,7 @@ key_is(CFTypeRef key, CFStringRef name)
 static void
 trace_key(const char *what, int which, CFTypeRef key, CFTypeRef value)
 {
-	char k[96] = "?", line[256];
+	char k[96] = "?", line[640];
 	double number = 0;
 
 	if (!trace) {
@@ -100,7 +130,23 @@ trace_key(const char *what, int which, CFTypeRef key, CFTypeRef value)
 	if (key != NULL && CFGetTypeID(key) == CFStringGetTypeID()) {
 		CFStringGetCString((CFStringRef)key, k, sizeof(k), kCFStringEncodingUTF8);
 	}
-	if (number_of(value, &number)) {
+	if (value != NULL && !number_of(value, &number)) {
+		/* not a number: what it is (its class) and what it says, on one line */
+		CFStringRef d = CFCopyDescription(value);
+		char text[400] = "?";
+
+		if (d != NULL) {
+			CFStringGetCString(d, text, sizeof(text), kCFStringEncodingUTF8);
+			CFRelease(d);
+		}
+		for (char *c = text; *c; c++) {
+			if (*c == '\n') {
+				*c = ' ';
+			}
+		}
+		snprintf(line, sizeof(line), "hakios-brightness: %s: %s %s %s = <%s> %s\n", process, class_names[which], what, k,
+		    object_getClassName((id)value), text);
+	} else if (number_of(value, &number)) {
 		snprintf(line, sizeof(line), "hakios-brightness: %s: %s %s %s = %g\n", process, class_names[which], what, k, number);
 	} else {
 		snprintf(line, sizeof(line), "hakios-brightness: %s: %s %s %s%s\n", process, class_names[which], what, k,
@@ -149,6 +195,10 @@ from_kernel(CFTypeRef key)
 		}
 		level = (float)value / 1000.0f;
 		return CFNumberCreate(kCFAllocatorDefault, kCFNumberFloatType, &level);
+	}
+	if (key_is(key, CFSTR("CBBrightnessControlAvailable"))) {
+		/* Darwin 27 asks before it lets the slider move: the kernel's backlight is the control (none: not hooked) */
+		return CFRetain(kCFBooleanTrue);
 	}
 	if (key_is(key, CFSTR("DisplayBrightnessAuto"))) {
 		if (!read_value("hw.backlight.auto", &value)) {
