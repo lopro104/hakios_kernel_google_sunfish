@@ -20,6 +20,7 @@ how to boot it. On the phone, iOS 27.2 (24B119), November 2026:
 | Touch, buttons, battery | FTM5 touch screen, power and volume keys, battery level from the PM6150. |
 | Wi-Fi | The modem and the WCN3990: scan, WPA2 join from Settings, DHCP, Safari, SSH. Stopping the modem hangs (`mpss_no_shutdown=1`). |
 | GPU | The Adreno 618 and the Metal plug-in built `CHIP=618`: backboardd draws with Metal, Liquid Glass included (`gpu=1 metal=1 metal_procs=backboardd`). SpringBoard and apps still draw in software. |
+| Storage | `/private/var` kept between boots in the DSU's own data image (`ufs_write=2 var_store=1 var_store_dev=dsudata`): saved every 5 minutes, unpacked at boot. |
 | Not yet | Flashlight, sound, camera, cellular, Bluetooth, the system on the phone's own partition. |
 
 The drivers are listed in [Documentation/drivers.md](Documentation/drivers.md#the-google-pixel-4as-own-sunfish-sm7150).
