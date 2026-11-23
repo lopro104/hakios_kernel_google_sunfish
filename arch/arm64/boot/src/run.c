@@ -741,6 +741,9 @@ run_kernel(int have_checkpoint, uint64_t checkpoint)
 		print("ufs: %d writes into darwin, %d bytes, read back the same; %d refused\n", block_writes,
 		    block_write_bytes, block_writes_refused);
 	}
+	if (block_dsud_writes != 0) {
+		print("ufs: %d writes into dsudata, %d bytes, read back the same\n", block_dsud_writes, block_dsud_write_bytes);
+	}
 	/* ... and its other cores should all be off again: the next kernel cannot start one that is not -- the core it ran on as
 	 * well, when that was not this one (it turns itself off after it has come back: a moment is given to it) */
 	if (kernel_mpidr != this_mpidr) {

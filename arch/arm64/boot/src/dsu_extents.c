@@ -5,11 +5,19 @@ static efi_status dsu_read(efi_block_io *data, uint64_t offset, uint64_t n, uint
 #define LP_GEOMETRY_MAGIC 0x616c4467u
 #define LP_HEADER_MAGIC   0x414c5030u
 
-static struct {
+struct dsu_ext {
 	uint64_t sector, count;         /* in userdata, 512-byte sectors */
-} dsu_extent[DSU_MAX_EXTENTS];
+};
+static struct dsu_ext dsu_extent[DSU_MAX_EXTENTS];      /* system_gsi: the Darwin system volume, read only */
 static unsigned dsu_extents;
 static uint64_t dsu_bytes;
+/*
+ * userdata_gsi: the DSU's own data image (made by Android's DSU install with its userdata size), all of it
+ * Darwin's: served as the partition "dsudata", read and written (the data volume's store, init/var_store.c).
+ */
+static struct dsu_ext dsud_extent[DSU_MAX_EXTENTS];
+static unsigned dsud_extents;
+static uint64_t dsud_bytes;
 
 /*
  * A 64-bit number of the metadata, a byte at a time: an extent is 24 bytes packed, so its sector (at 12)
@@ -26,9 +34,10 @@ dsu_u64(const uint8_t *p)
 	return v;
 }
 
-/* The extents of system_gsi from one lp_metadata found at `at` in buffer `p` (geometry first); 0 = none. */
+/* The extents of the partition WANT from one lp_metadata found at `at` in buffer `p` (geometry first); 0 = none. */
 static int
-dsu_parse(const uint8_t *p, uint64_t room, uint64_t userdata_sectors)
+dsu_parse(const uint8_t *p, uint64_t room, uint64_t userdata_sectors, const char *want, struct dsu_ext *out,
+    unsigned *out_n, uint64_t *out_bytes)
 {
 	const uint8_t *h = p + 4096;
 	uint32_t header_size, tables_size, po, pn, ps, eo, en, es;
@@ -50,15 +59,15 @@ dsu_parse(const uint8_t *p, uint64_t room, uint64_t userdata_sectors)
 	}
 	for (uint32_t i = 0; i < pn; i++) {
 		const uint8_t *e = t + po + (uint64_t)i * ps;
-		static const char want[] = "system_gsi";
 		uint32_t first, n;
 		uint64_t bytes = 0;
 		unsigned k = 0;
 
-		while (k < sizeof(want) && e[k] == (uint8_t)want[k]) {
+		/* (the name and its ending 0: "system_gsi" is not "system_gsi_b") */
+		while (k < 36 && e[k] == (uint8_t)want[k] && want[k] != 0) {
 			k++;
 		}
-		if (k != sizeof(want)) {
+		if (k >= 36 || want[k] != 0 || e[k] != 0) {
 			continue;
 		}
 		first = *(const uint32_t *)(e + 40);
@@ -79,12 +88,12 @@ dsu_parse(const uint8_t *p, uint64_t room, uint64_t userdata_sectors)
 		for (uint32_t x = 0; x < n; x++) {
 			const uint8_t *ex = t + eo + (uint64_t)(first + x) * es;
 
-			dsu_extent[x].sector = dsu_u64(ex + 12);
-			dsu_extent[x].count = dsu_u64(ex);
-			bytes += dsu_extent[x].count * 512;
+			out[x].sector = dsu_u64(ex + 12);
+			out[x].count = dsu_u64(ex);
+			bytes += out[x].count * 512;
 		}
-		dsu_extents = n;
-		dsu_bytes = bytes;
+		*out_n = n;
+		*out_bytes = bytes;
 		return 1;
 	}
 	return 0;

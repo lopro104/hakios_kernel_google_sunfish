@@ -227,6 +227,32 @@ block_start(void)
 		} else {
 			log_len = saved;        /* (no DSU image: nothing to say about it) */
 		}
+		/*
+		 * The DSU's data image (userdata_gsi), when the install made one: "dsudata", every block of it
+		 * Darwin's to read and write -- and only those, each write put where the extents say and read back.
+		 */
+		saved = log_len;
+		block_dsud_part = -1;
+		if (block_dsu_part >= 0 && block_shared.parts < BLOCK_MAX_PARTS && dsud_find(&data) &&
+		    data->media->block_size == 4096 && dsud_bytes >= 4096) {
+			struct loader_block_part *bp = &block_shared.part[block_shared.parts];
+			static const char name[] = "dsudata";
+
+			memset(bp, 0, sizeof(*bp));
+			memcpy(bp->name, name, sizeof(name));
+			bp->block_size = 4096;
+			bp->blocks = dsud_bytes / 4096;
+			bp->unit = 0xffff;
+			bp->lun = 0xff;
+			bp->flags = BLOCK_PART_DSU;
+			block_dsud_part = (int)block_shared.parts;
+			block_bios[block_shared.parts++] = data;
+			block_keep_last();
+			print("ufs: dsudata: the DSU data image as partition %d, %d blocks of 4096 in %d extents, read and written\n",
+			    (uint64_t)block_dsud_part, bp->blocks, (uint64_t)dsud_extents);
+		} else {
+			log_len = saved;
+		}
 	}
 	/* the kernel's own transfer list: this loader's area, if the controller is as UEFI keeps it */
 	if (hc_known && hc_list_is_uefis() && hc_rd(HC_UTRLDBR) == 0 && (hc_rd(HC_HCE) & 1)) {
@@ -250,6 +276,7 @@ block_start(void)
 	/* per run, like the two above: this loader stays resident across runs, and a tally carried
 	 * over from the run before is read as this one's */
 	block_writes = block_writes_refused = block_write_bytes = 0;
+	block_dsud_writes = block_dsud_write_bytes = 0;
 	if (block_write_part >= 0) {
 		block_shared.write_part_plus_one = (uint32_t)block_write_part + 1;
 		block_shared.write_first = BLOCK_WRITE_FIRST;
@@ -380,6 +407,35 @@ block_poll(void)
 			}
 			s = 0x800000000000000FULL;      /* EFI_ACCESS_DENIED */
 			bytes = 0;
+		} else if ((int)part == block_dsud_part) {
+			/* the DSU data image: all of it Darwin's; a write is read back before it is answered */
+			if (op == BLOCK_OP_READ) {
+				s = dsu_io(dsud_extent, dsud_extents, dsud_bytes, bio, lba * 4096, bytes, block_buffer, 0);
+				flush_dcache((uint64_t)(uintptr_t)block_buffer, (uint64_t)(uintptr_t)block_buffer + bytes);
+			} else if (op == BLOCK_OP_WRITE) {
+				uint32_t want;
+
+				flush_dcache((uint64_t)(uintptr_t)block_buffer, (uint64_t)(uintptr_t)block_buffer + bytes);
+				want = ufs_crc32(block_buffer, bytes);
+				s = dsu_io(dsud_extent, dsud_extents, dsud_bytes, bio, lba * 4096, bytes, block_buffer, 1);
+				if (!EFI_ERROR(s)) {
+					s = bio->flush_blocks(bio);
+				}
+				if (!EFI_ERROR(s)) {
+					s = dsu_io(dsud_extent, dsud_extents, dsud_bytes, bio, lba * 4096, bytes, block_buffer, 0);
+					flush_dcache((uint64_t)(uintptr_t)block_buffer, (uint64_t)(uintptr_t)block_buffer + bytes);
+					if (!EFI_ERROR(s) && ufs_crc32(block_buffer, bytes) != want) {
+						print("ufs: %d blocks from %d of dsudata read back DIFFERENT\n", count, lba);
+						s = 0x800000000000000AULL;      /* EFI_VOLUME_CORRUPTED */
+					}
+				}
+				if (!EFI_ERROR(s)) {
+					block_dsud_writes++;
+					block_dsud_write_bytes += bytes;
+				}
+			} else {
+				bytes = 0;
+			}
 		} else if ((int)part == block_dsu_part) {
 			if (op != BLOCK_OP_READ) {
 				s = 0x800000000000000FULL;      /* EFI_ACCESS_DENIED: the image is read only here */

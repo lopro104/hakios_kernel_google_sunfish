@@ -59,10 +59,20 @@ static unsigned changed_under;          /* files that were another by the time t
 
 #define BLOCK           4096
 #define BUFFER          (4u << 20)              /* the loader's own buffer: one request a write */
-#define STORE_AT        8589934592LL            /* darwin's block 2097152: past the cryptexes, with room to spare */
-#define SLOT_BYTES      0x80000000LL            /* 2 GiB a slot, two slots */
+/*
+ * Where the store is: darwin past the cryptexes (the default), or with boot-arg var_store_dev=dsudata the DSU's data
+ * image (userdata_gsi, served by the loader as dsudata; the kernel takes writes on it with ufs_write=2) -- for a phone
+ * whose darwin holds another system's data, as the Pixel 4a's holds iOS 16.5's. There all of the image is the store:
+ * two slots of half of it each, from its start, and no boot state (that is darwin's).
+ */
+static long long store_at = 8589934592LL;       /* darwin's block 2097152: past the cryptexes, with room to spare */
+static long long slot_bytes = 0x80000000LL;     /* 2 GiB a slot, two slots */
+static const char *store_device = "/dev/rufs_darwin";
+static int store_dsu;                           /* var_store_dev=dsudata */
+#define STORE_AT        store_at
+#define SLOT_BYTES      slot_bytes
 #define SLOTS           2
-#define DEVICE          "/dev/rufs_darwin"
+#define DEVICE          store_device
 #define STATE_AT        8566865920LL            /* darwin's block 2091520: the boot state (common/flash/bundlefmt.py) */
 #define BOOTOK_AFTER    60                      /* seconds of a run that make it a good start */
 #define ROOT            "/private/var"
@@ -1670,6 +1680,10 @@ bootok(void)
 	struct boot_state st;
 	int ok;
 
+	if (store_dsu) {
+		return 1;       /* (the boot state is darwin's; a start from the DSU image has none) */
+	}
+
 	fd = open(DEVICE, O_RDWR, 0);
 	if (fd < 0) {
 		printf("var_store: bootok: %s: %s\n", DEVICE, strerror(errno));
@@ -1826,6 +1840,13 @@ main(int argc, char **argv, char **envp)
 
 	(void)envp;
 	crc_init();
+	if (boot_arg_is("var_store_dev", "dsudata")) {
+		/* (the image the DSU install made: 2 GiB here, KEY_USERDATA_SIZE; the kernel refuses a write past its end) */
+		store_dsu = 1;
+		store_device = "/dev/rufs_dsudata";
+		store_at = 0;
+		slot_bytes = 0x40000000LL;      /* 1 GiB a slot, two slots */
+	}
 	if (strcmp(what, "bootok") == 0) {
 		return bootok() ? 0 : 1;
 	}
@@ -1910,7 +1931,11 @@ main(int argc, char **argv, char **envp)
 			printf("var_store: var_store_skip: the store is only looked at this boot, not saved\n");
 			return 0;
 		}
-		return watch(argc > 2 ? (int)parse_number(argv[2]) : 0) ? 0 : 1;
+		/*
+		 * (from the DSU image a run seldom ends the orderly way -- the phone is switched off -- so the volume is
+		 * saved every 5 minutes as well unless told otherwise)
+		 */
+		return watch(argc > 2 ? (int)parse_number(argv[2]) : store_dsu ? 300 : 0) ? 0 : 1;
 	}
 	fd = open(DEVICE, strcmp(what, "load") == 0 || strcmp(what, "show") == 0 ? O_RDONLY : O_RDWR, 0);
 	if (fd < 0) {

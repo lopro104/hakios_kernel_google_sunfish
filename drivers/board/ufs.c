@@ -209,6 +209,8 @@ static int ufs_var_busy_pid;
 
 /* ufs_write=1 and the one partition it is for: everything else answers EROFS as it always did */
 static int ufs_write_part = -1;
+/* the first block of it a write may reach: darwin's UFS_WRITE_FIRST, or 0 for dsudata (ufs_write=2), all of it ours */
+static uint64_t ufs_write_first = UINT64_MAX;
 static volatile bool ufs_write_busy;            /* a write of ours has this kernel's list out: not a failure */
 static bool ufs_write_out, ufs_write_was_native;        /* the list is out for writing, and was in before */
 static uint64_t ufs_writes, ufs_write_bytes, ufs_write_errors, ufs_write_refused;
@@ -655,7 +657,7 @@ ufs_write(uint32_t part, uint64_t offset, const uint8_t *src, uint64_t len)
 	if (len == 0 || offset % nbs != 0 || len % nbs != 0) {
 		return EINVAL;          /* whole blocks only: nothing is read before a write */
 	}
-	if (offset / nbs < UFS_WRITE_FIRST || offset > ufs_part_bytes(part) ||
+	if (offset / nbs < ufs_write_first || offset > ufs_part_bytes(part) ||
 	    len > ufs_part_bytes(part) - offset) {
 		/* the Darwin volume, the cryptexes, and anything past the partition's end: never */
 		ufs_write_refused++;
@@ -677,7 +679,7 @@ ufs_write(uint32_t part, uint64_t offset, const uint8_t *src, uint64_t len)
 		ufs_write_out = true;
 		if (ufs_write_was_native) {
 			ufs_native_on = false;
-			ufs_native_out("writing the data volume into darwin");
+			ufs_native_out("writing the data volume");
 		}
 	}
 	while (len > 0 && error == 0) {
@@ -1738,11 +1740,32 @@ hakios_ufs_init(void)
 			ufs_write_part = (int)i;
 		}
 		if (ufs_write_part >= 0) {
+			ufs_write_first = UFS_WRITE_FIRST;
 			printf("ufs: /dev/rufs_darwin takes writes, whole blocks from %llu on (%llu MB of it); "
 			    "everything else of the storage is read only\n", UFS_WRITE_FIRST,
 			    (UFS_DARWIN_BLOCKS - UFS_WRITE_FIRST) * 4096 >> 20);
 		} else {
 			printf("ufs: nothing takes writes: darwin is not among the partitions\n");
+		}
+	}
+	/*
+	 * ufs_write=2: the DSU's data image instead -- "dsudata", the userdata_gsi an Android DSU install made, which the
+	 * loader serves through its extents and reads back after every write. All of it is Darwin's: nothing else of the
+	 * phone uses it, so a write may reach any block of it, and nothing else of the storage is writable.
+	 */
+	if (check == 2) {
+		for (uint32_t i = 0; i < ufs_parts; i++) {
+			if (strncmp((const char *)ufs_page->part[i].name, "dsudata", 8) == 0 &&
+			    ufs_page->part[i].block_size == 4096 && ufs_page->part[i].blocks != 0) {
+				ufs_write_part = (int)i;
+				ufs_write_first = 0;
+			}
+		}
+		if (ufs_write_part >= 0) {
+			printf("ufs: /dev/rufs_dsudata (the DSU data image, %llu MB) takes writes; everything else of the storage is read only\n",
+			    ufs_page->part[ufs_write_part].blocks * 4096 >> 20);
+		} else {
+			printf("ufs: nothing takes writes: the loader serves no dsudata (no userdata_gsi, or a loader before it)\n");
 		}
 	}
 

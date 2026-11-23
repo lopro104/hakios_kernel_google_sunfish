@@ -33,6 +33,8 @@ static int block_enabled;
 static int block_write_requested;       /* ufs_write=1 on the command line */
 static int block_write_part = -1;       /* the only partition a write may reach; -1: none, writes refused */
 static int block_dsu_part = -1;         /* the DSU image's entry (BLOCK_PART_DSU); -1: none */
+static int block_dsud_part = -1;        /* the DSU data image's entry ("dsudata", read and written); -1: none */
+static uint64_t block_dsud_writes, block_dsud_write_bytes;
 static uint64_t block_writes, block_writes_refused, block_write_bytes;
 
 /* the bytes of a device path before its end node */
